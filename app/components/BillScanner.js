@@ -13,47 +13,164 @@ const categories = [
   "Other",
 ];
 
+async function preprocessImage(file) {
+  return new Promise(async (resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+
+    let orientation = 1;
+    try {
+      const exifr = (await import("exifr")).default;
+      const exifData = await exifr.parse(file, { pick: ["Orientation"] });
+      if (exifData?.Orientation) {
+        orientation = exifData.Orientation;
+      }
+    } catch (e) {}
+
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+
+      let width = img.width;
+      let height = img.height;
+
+      if (orientation >= 5 && orientation <= 8) {
+        canvas.width = height;
+        canvas.height = width;
+      } else {
+        canvas.width = width;
+        canvas.height = height;
+      }
+
+      const maxDim = 2000;
+      const scale = Math.min(1, maxDim / Math.max(canvas.width, canvas.height));
+      if (scale < 1) {
+        canvas.width = Math.round(canvas.width * scale);
+        canvas.height = Math.round(canvas.height * scale);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+
+      ctx.save();
+      switch (orientation) {
+        case 2: ctx.transform(-1, 0, 0, 1, canvas.width, 0); break;
+        case 3: ctx.transform(-1, 0, 0, -1, canvas.width, canvas.height); break;
+        case 4: ctx.transform(1, 0, 0, -1, 0, canvas.height); break;
+        case 5: ctx.transform(0, 1, 1, 0, 0, 0); break;
+        case 6: ctx.transform(0, 1, -1, 0, canvas.width, 0); break;
+        case 7: ctx.transform(0, -1, -1, 0, canvas.width, canvas.height); break;
+        case 8: ctx.transform(0, -1, 1, 0, 0, canvas.height); break;
+        default: break;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      ctx.restore();
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        data[i] = gray;
+        data[i + 1] = gray;
+        data[i + 2] = gray;
+      }
+
+      const contrast = 60;
+      const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = Math.min(255, Math.max(0, factor * (data[i] - 128) + 128));
+        data[i + 1] = Math.min(255, Math.max(0, factor * (data[i + 1] - 128) + 128));
+        data[i + 2] = Math.min(255, Math.max(0, factor * (data[i + 2] - 128) + 128));
+      }
+
+      const threshold = 140;
+      for (let i = 0; i < data.length; i += 4) {
+        const val = data[i] > threshold ? 255 : 0;
+        data[i] = val;
+        data[i + 1] = val;
+        data[i + 2] = val;
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+
+      canvas.toBlob((blob) => {
+        const processedUrl = canvas.toDataURL("image/png");
+        URL.revokeObjectURL(url);
+        resolve({ blob, processedUrl, originalUrl: url });
+      }, "image/png", 1.0);
+    };
+
+    img.src = url;
+  });
+}
+
 export default function BillScanner({ onExpenseAdded }) {
-  const [step, setStep] = useState("upload"); // upload, scanning, review, done
-  const [image, setImage] = useState(null);
+  const [step, setStep] = useState("upload");
   const [imagePreview, setImagePreview] = useState(null);
+  const [processedPreview, setProcessedPreview] = useState(null);
+  const [processedBlob, setProcessedBlob] = useState(null);
   const [progress, setProgress] = useState(0);
+  const [progressText, setProgressText] = useState("");
   const [items, setItems] = useState([]);
   const [rawText, setRawText] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const fileRef = useRef(null);
+  const cameraRef = useRef(null);
 
-  const handleImageSelect = (e) => {
+  const handleImageSelect = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    setImage(file);
-    const reader = new FileReader();
-    reader.onload = (ev) => setImagePreview(ev.target.result);
-    reader.readAsDataURL(file);
+    const originalUrl = URL.createObjectURL(file);
+    setImagePreview(originalUrl);
+    setProgressText("Enhancing image for scanning...");
+    setStep("processing");
+
+    try {
+      const { blob, processedUrl } = await preprocessImage(file);
+      setProcessedBlob(blob);
+      setProcessedPreview(processedUrl);
+      setStep("ready");
+    } catch (err) {
+      const response = await fetch(originalUrl);
+      const blob = await response.blob();
+      setProcessedBlob(blob);
+      setProcessedPreview(originalUrl);
+      setStep("ready");
+    }
   };
 
   const handleScan = async () => {
-    if (!image) return;
-
+    if (!processedBlob) return;
     setStep("scanning");
     setProgress(0);
+    setProgressText("Loading OCR engine...");
 
     try {
-      // Dynamic import to keep bundle small
       const Tesseract = (await import("tesseract.js")).default;
 
-      const result = await Tesseract.recognize(image, "eng", {
+      const result = await Tesseract.recognize(processedBlob, "eng", {
         logger: (m) => {
           if (m.status === "recognizing text") {
             setProgress(Math.round(m.progress * 100));
+            if (m.progress < 0.3) setProgressText("Scanning lines...");
+            else if (m.progress < 0.6) setProgressText("Detecting prices...");
+            else if (m.progress < 0.9) setProgressText("Almost there...");
+            else setProgressText("Finishing up...");
+          } else if (m.status === "loading tesseract core") {
+            setProgressText("Loading OCR engine...");
+          } else if (m.status === "initializing tesseract") {
+            setProgressText("Initializing...");
+          } else if (m.status === "loading language traineddata") {
+            setProgressText("Loading language data...");
           }
         },
       });
 
-      setRawText(result.data.text);
-      const extracted = processReceiptText(result.data.text);
+      const fullText = result.data.text;
+      setRawText(fullText);
+      const extracted = processReceiptText(fullText);
 
       if (extracted.length === 0) {
         setItems([]);
@@ -61,7 +178,6 @@ export default function BillScanner({ onExpenseAdded }) {
         return;
       }
 
-      // Add date and unique IDs
       const today = new Date().toISOString().split("T")[0];
       const withMeta = extracted.map((item, i) => ({
         ...item,
@@ -73,25 +189,20 @@ export default function BillScanner({ onExpenseAdded }) {
       setItems(withMeta);
       setStep("review");
     } catch (err) {
-      console.error("OCR Error:", err);
-      setMessage("Failed to read the image. Try a clearer photo.");
+      setMessage("Failed to read the image. Try a clearer photo with good lighting.");
       setStep("upload");
     }
   };
 
   const updateItem = (id, field, value) => {
     setItems((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, [field]: value } : item
-      )
+      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
     );
   };
 
   const toggleItem = (id) => {
     setItems((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, selected: !item.selected } : item
-      )
+      prev.map((item) => (item.id === id ? { ...item, selected: !item.selected } : item))
     );
   };
 
@@ -121,10 +232,8 @@ export default function BillScanner({ onExpenseAdded }) {
       setMessage("No items to save. Check your selections.");
       return;
     }
-
     setSaving(true);
     setMessage("");
-
     try {
       for (const item of selected) {
         await fetch("/api/expenses", {
@@ -138,7 +247,6 @@ export default function BillScanner({ onExpenseAdded }) {
           }),
         });
       }
-
       setMessage(`${selected.length} expenses saved!`);
       setStep("done");
       if (onExpenseAdded) onExpenseAdded();
@@ -151,12 +259,14 @@ export default function BillScanner({ onExpenseAdded }) {
 
   const reset = () => {
     setStep("upload");
-    setImage(null);
     setImagePreview(null);
+    setProcessedPreview(null);
+    setProcessedBlob(null);
     setItems([]);
     setRawText("");
     setMessage("");
     setProgress(0);
+    setProgressText("");
   };
 
   const selectedTotal = items
@@ -176,33 +286,27 @@ export default function BillScanner({ onExpenseAdded }) {
         </div>
       )}
 
-      {/* STEP 1: Upload */}
       {step === "upload" && (
         <div className="upload-area">
-          {imagePreview ? (
-            <div className="image-preview-container">
-              <img src={imagePreview} alt="Bill preview" className="image-preview" />
-              <div className="preview-actions">
-                <button className="btn btn-primary" onClick={handleScan}>
-                  Scan This Bill
-                </button>
-                <button className="btn btn-ghost" onClick={reset}>
-                  Choose Different Image
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div
-              className="dropzone"
-              onClick={() => fileRef.current?.click()}
-            >
-              <div className="dropzone-icon">📸</div>
-              <p className="dropzone-title">Upload your bill or receipt</p>
-              <p className="dropzone-subtitle">
-                Click to choose a photo. Works best with clear, well-lit images.
-              </p>
+          <div className="upload-options">
+            <div className="dropzone" onClick={() => fileRef.current?.click()}>
+              <div className="dropzone-icon">🖼️</div>
+              <p className="dropzone-title">Choose from Gallery</p>
+              <p className="dropzone-subtitle">Pick a photo of your bill or receipt</p>
               <input
                 ref={fileRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageSelect}
+                style={{ display: "none" }}
+              />
+            </div>
+            <div className="dropzone" onClick={() => cameraRef.current?.click()}>
+              <div className="dropzone-icon">📸</div>
+              <p className="dropzone-title">Take a Photo</p>
+              <p className="dropzone-subtitle">Use your camera to snap the bill</p>
+              <input
+                ref={cameraRef}
                 type="file"
                 accept="image/*"
                 capture="environment"
@@ -210,16 +314,58 @@ export default function BillScanner({ onExpenseAdded }) {
                 style={{ display: "none" }}
               />
             </div>
-          )}
+          </div>
+          <div className="scan-tips">
+            <p className="tips-title">Tips for best results:</p>
+            <ul className="tips-list">
+              <li>Use good lighting — avoid shadows on the bill</li>
+              <li>Keep the bill flat and fully visible</li>
+              <li>Avoid blurry or tilted photos</li>
+              <li>Printed receipts work better than handwritten ones</li>
+            </ul>
+          </div>
         </div>
       )}
 
-      {/* STEP 2: Scanning */}
+      {step === "processing" && (
+        <div className="scanning-area">
+          <div className="scan-animation">
+            <div className="scan-icon">⚙️</div>
+            <p className="scan-status">{progressText}</p>
+          </div>
+        </div>
+      )}
+
+      {step === "ready" && (
+        <div className="upload-area">
+          <div className="image-preview-container">
+            <div className="preview-compare">
+              <div className="preview-box">
+                <span className="preview-label">Original</span>
+                <img src={imagePreview} alt="Original" className="image-preview" />
+              </div>
+              <div className="preview-box">
+                <span className="preview-label">Enhanced for OCR</span>
+                <img src={processedPreview} alt="Processed" className="image-preview" />
+              </div>
+            </div>
+            <div className="preview-actions">
+              <button className="btn btn-primary" onClick={handleScan}>
+                Scan This Bill
+              </button>
+              <button className="btn btn-ghost" onClick={reset}>
+                Choose Different Image
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {step === "scanning" && (
         <div className="scanning-area">
           <div className="scan-animation">
             <div className="scan-icon">🔍</div>
-            <p className="scan-status">Reading your bill...</p>
+            <p className="scan-status">{progressText}</p>
           </div>
           <div className="progress-bar-container">
             <div className="progress-bar" style={{ width: `${progress}%` }}></div>
@@ -228,7 +374,6 @@ export default function BillScanner({ onExpenseAdded }) {
         </div>
       )}
 
-      {/* STEP 3: Review */}
       {step === "review" && (
         <div className="review-area">
           {items.length === 0 ? (
@@ -236,8 +381,14 @@ export default function BillScanner({ onExpenseAdded }) {
               <p className="no-items-title">No items detected</p>
               <p className="no-items-subtitle">
                 The image might be blurry or in an unsupported format.
-                You can add items manually or try a different photo.
+                Try a clearer photo with better lighting, or add items manually.
               </p>
+              {rawText && (
+                <details className="raw-text-section" style={{ marginBottom: "16px" }}>
+                  <summary>View what OCR detected</summary>
+                  <pre className="raw-text-content">{rawText}</pre>
+                </details>
+              )}
               <div className="no-items-actions">
                 <button className="btn btn-primary" onClick={addManualItem}>
                   Add Manually
@@ -274,16 +425,13 @@ export default function BillScanner({ onExpenseAdded }) {
                         onChange={() => toggleItem(item.id)}
                       />
                     </div>
-
                     <div className="review-item-fields">
                       <div className="review-row">
                         <input
                           type="text"
                           className="review-input name-input"
                           value={item.item}
-                          onChange={(e) =>
-                            updateItem(item.id, "item", e.target.value)
-                          }
+                          onChange={(e) => updateItem(item.id, "item", e.target.value)}
                           placeholder="Item name"
                         />
                         <input
@@ -297,45 +445,31 @@ export default function BillScanner({ onExpenseAdded }) {
                           }
                         />
                       </div>
-
                       <div className="review-row-bottom">
                         <select
                           className="review-select"
                           value={item.category}
-                          onChange={(e) =>
-                            updateItem(item.id, "category", e.target.value)
-                          }
+                          onChange={(e) => updateItem(item.id, "category", e.target.value)}
                         >
                           {categories.map((cat) => (
-                            <option key={cat} value={cat}>
-                              {cat}
-                            </option>
+                            <option key={cat} value={cat}>{cat}</option>
                           ))}
                         </select>
-
                         <input
                           type="date"
                           className="review-input date-input"
                           value={item.date}
-                          onChange={(e) =>
-                            updateItem(item.id, "date", e.target.value)
-                          }
+                          onChange={(e) => updateItem(item.id, "date", e.target.value)}
                         />
-
                         {item.confidence > 0 && (
                           <span
                             className={`confidence-badge ${
-                              item.confidence >= 70
-                                ? "high"
-                                : item.confidence >= 40
-                                ? "mid"
-                                : "low"
+                              item.confidence >= 70 ? "high" : item.confidence >= 40 ? "mid" : "low"
                             }`}
                           >
                             {item.confidence}% match
                           </span>
                         )}
-
                         <button
                           className="remove-item-btn"
                           onClick={() => removeItem(item.id)}
@@ -344,7 +478,6 @@ export default function BillScanner({ onExpenseAdded }) {
                           ✕
                         </button>
                       </div>
-
                       {item.rawName && item.rawName !== item.item && (
                         <span className="raw-text-hint">
                           OCR read: &quot;{item.rawName}&quot;
@@ -356,14 +489,8 @@ export default function BillScanner({ onExpenseAdded }) {
               </div>
 
               <div className="review-actions">
-                <button
-                  className="btn btn-primary"
-                  onClick={saveAll}
-                  disabled={saving}
-                >
-                  {saving
-                    ? "Saving..."
-                    : `Save ${items.filter((i) => i.selected).length} Items`}
+                <button className="btn btn-primary" onClick={saveAll} disabled={saving}>
+                  {saving ? "Saving..." : `Save ${items.filter((i) => i.selected).length} Items`}
                 </button>
                 <button className="btn btn-ghost" onClick={reset}>
                   Scan Another
@@ -372,8 +499,7 @@ export default function BillScanner({ onExpenseAdded }) {
             </>
           )}
 
-          {/* Raw OCR text toggle */}
-          {rawText && (
+          {rawText && items.length > 0 && (
             <details className="raw-text-section">
               <summary>View raw OCR text</summary>
               <pre className="raw-text-content">{rawText}</pre>
@@ -382,7 +508,6 @@ export default function BillScanner({ onExpenseAdded }) {
         </div>
       )}
 
-      {/* STEP 4: Done */}
       {step === "done" && (
         <div className="done-area">
           <div className="done-icon">✅</div>

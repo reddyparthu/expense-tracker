@@ -1176,3 +1176,89 @@ body {
   background: rgba(255, 255, 255, 0.06);
   color: #e2e8f0;
 }
+
+/* ===== ADD THIS TO THE END OF YOUR globals.css ===== */
+
+/* ===== UPLOAD OPTIONS ===== */
+.upload-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+/* ===== SCAN TIPS ===== */
+.scan-tips {
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  padding: 16px 20px;
+}
+
+.tips-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.tips-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tips-list li {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  padding-left: 18px;
+  position: relative;
+}
+
+.tips-list li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  color: var(--green);
+  font-weight: 600;
+}
+
+/* ===== PREVIEW COMPARE ===== */
+.preview-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.preview-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.preview-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.preview-box .image-preview {
+  width: 100%;
+  height: 200px;
+  object-fit: contain;
+  background: var(--bg);
+}
+
+@media (max-width: 600px) {
+  .upload-options {
+    grid-template-columns: 1fr;
+  }
+
+  .preview-compare {
+    grid-template-columns: 1fr;
+  }}
