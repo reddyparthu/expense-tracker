@@ -1262,3 +1262,62 @@ body {
   .preview-compare {
     grid-template-columns: 1fr;
   }}
+  /* ===== PASTE LIST ===== */
+.upload-options.three-col {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.paste-area {
+  margin-top: 8px;
+}
+
+.paste-instructions {
+  font-size: 0.9rem;
+  margin-bottom: 10px;
+  color: var(--text);
+}
+
+.paste-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.paste-examples code {
+  background: var(--bg);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.paste-textarea {
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+  min-height: 200px;
+  background: var(--surface);
+}
+
+.paste-textarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.paste-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+@media (max-width: 600px) {
+  .upload-options.three-col {
+    grid-template-columns: 1fr;
+  }
+}
