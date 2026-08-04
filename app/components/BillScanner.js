@@ -1,6 +1,7 @@
 "use client";
 import { useState, useRef } from "react";
 import { processReceiptText } from "@/lib/ocrUtils";
+import { compressImage } from "@/lib/compressImage";
 
 const categories = [
   "Food & Groceries",
@@ -19,27 +20,10 @@ function parsePastedList(text) {
   const items = [];
 
   for (const line of lines) {
-    // Try many common formats:
-    // "Milk - €2.50" or "Milk - 2.50"
-    // "Milk: €2.50" or "Milk: 2.50"
-    // "Milk €2.50" or "Milk 2.50"
-    // "1. Milk - €2.50"
-    // "- Milk €2.50"
-    // "Milk | €2.50"
-    // "Milk — 2.50"
-    // "Milk -> 2.50"
-    // "Milk .... 2.50"
-    // "Milk (€2.50)"
-    // "Milk  2.50 EUR"
-
-    // Remove leading bullets, numbers, dashes
     let cleaned = line.replace(/^[\d]+[.):\-]\s*/, "");
-    cleaned = cleaned.replace(/^[-•*·→►]\s*/, "");
-    cleaned = cleaned.trim();
-
+    cleaned = cleaned.replace(/^[-•*·→►]\s*/, "").trim();
     if (!cleaned) continue;
 
-    // Skip header-like lines
     const skipWords = [
       "total", "subtotal", "grand total", "tax", "vat",
       "item", "description", "price", "amount", "quantity",
@@ -48,19 +32,13 @@ function parsePastedList(text) {
     ];
     if (skipWords.some((w) => cleaned.toLowerCase().includes(w) && cleaned.length < 40)) continue;
 
-    // Try to find a price in the line
-    // Match: €2.50, $2.50, £2.50, 2.50€, 2,50, 2.50 EUR, (2.50), etc.
     const pricePatterns = [
-      // €2.50 or $ 2.50 or £2,50
       /[€$£]\s*(\d{1,5}[.,]\d{1,2})/,
-      // 2.50€ or 2,50 EUR
       /(\d{1,5}[.,]\d{1,2})\s*[€$£]?\s*(?:EUR|USD|GBP|eur)?/i,
-      // (2.50) in parentheses
       /\((?:[€$£])?\s*(\d{1,5}[.,]\d{1,2})\s*(?:[€$£])?\)/,
     ];
 
     let price = null;
-    let priceMatch = null;
     let matchStr = "";
 
     for (const pattern of pricePatterns) {
@@ -69,7 +47,6 @@ function parsePastedList(text) {
         const p = parseFloat(m[1].replace(",", "."));
         if (p > 0 && p < 99999) {
           price = p;
-          priceMatch = m;
           matchStr = m[0];
           break;
         }
@@ -78,20 +55,16 @@ function parsePastedList(text) {
 
     if (price === null) continue;
 
-    // Get item name by removing the price part and separators
     let itemName = cleaned.replace(matchStr, "");
-    // Remove common separators
     itemName = itemName.replace(/[-–—:|>→►\.]{2,}\s*$/, "");
     itemName = itemName.replace(/^\s*[-–—:|>→►\.]{2,}/, "");
     itemName = itemName.replace(/[-–—:|>→►]\s*$/, "");
     itemName = itemName.replace(/^\s*[-–—:|>→►]/, "");
     itemName = itemName.replace(/\(\s*\)/, "");
-    itemName = itemName.replace(/\s{2,}/g, " ");
-    itemName = itemName.trim();
+    itemName = itemName.replace(/\s{2,}/g, " ").trim();
 
     if (itemName.length < 1) continue;
 
-    // Capitalize first letter of each word
     const displayName = itemName
       .split(" ")
       .map((w) => {
@@ -106,141 +79,67 @@ function parsePastedList(text) {
       rawName: itemName,
     });
   }
-
   return items;
 }
 
-// Categorize pasted items using keyword matching
 function categorizePastedItems(items) {
-  // Import fuse dynamically would be complex, so use simple keyword matching
   const keywordMap = {
     "Food & Groceries": [
       "milk", "bread", "rice", "egg", "chicken", "meat", "fish", "butter",
       "cheese", "yogurt", "apple", "banana", "orange", "tomato", "potato",
-      "onion", "garlic", "carrot", "lettuce", "pasta", "noodle", "cereal",
-      "flour", "sugar", "salt", "oil", "coffee", "tea", "juice", "water",
-      "soda", "beer", "wine", "chips", "cookie", "chocolate", "ice cream",
-      "frozen", "canned", "soup", "sauce", "sausage", "bacon", "ham",
-      "shrimp", "tofu", "mushroom", "avocado", "lemon", "grape", "strawberry",
-      "mango", "corn", "peas", "beans", "lentil", "nuts", "almond", "cream",
-      "honey", "jam", "ketchup", "mustard", "mayo", "vinegar", "pepper",
-      "spice", "herb", "fruit", "vegetable", "veggie", "snack", "drink",
-      "grocery", "food", "biscuit", "cracker", "cake", "pie", "pizza",
-      "sandwich", "wrap", "salad", "deli", "produce", "dairy", "bakery",
-      "cucumber", "spinach", "broccoli", "oat", "peanut", "tuna", "salmon",
-      "turkey", "beef", "pork", "lamb",
+      "onion", "garlic", "carrot", "pasta", "noodle", "cereal", "flour",
+      "sugar", "salt", "oil", "coffee", "tea", "juice", "water", "soda",
+      "beer", "wine", "chips", "cookie", "chocolate", "frozen", "soup",
+      "sauce", "sausage", "bacon", "ham", "shrimp", "tofu", "mushroom",
+      "avocado", "lemon", "grape", "mango", "corn", "peas", "beans",
+      "nuts", "almond", "cream", "honey", "jam", "ketchup", "mustard",
+      "fruit", "vegetable", "snack", "drink", "grocery", "food", "pizza",
+      "sandwich", "salad", "dairy", "bakery", "salmon", "beef", "pork",
     ],
     "Shopping": [
-      "soap", "shampoo", "conditioner", "toothpaste", "toothbrush",
-      "deodorant", "detergent", "dish soap", "sponge", "trash bag",
-      "bleach", "cleaner", "tissue", "toilet paper", "paper towel",
-      "battery", "light bulb", "candle", "cloth", "shirt", "pant",
-      "shoe", "bag", "cosmetic", "beauty",
+      "soap", "shampoo", "toothpaste", "deodorant", "detergent",
+      "tissue", "toilet paper", "battery", "cloth", "shirt", "shoe",
+      "bag", "cosmetic", "beauty", "cleaner",
     ],
     "Transport": [
       "petrol", "gasoline", "diesel", "fuel", "bus", "train", "metro",
-      "taxi", "uber", "lyft", "parking", "toll", "fare", "transit",
+      "taxi", "uber", "parking", "toll", "fare",
     ],
     "Utilities": [
-      "electricity", "water bill", "gas bill", "internet", "wifi",
-      "phone bill", "mobile", "recharge", "broadband", "cable",
+      "electricity", "water bill", "internet", "wifi", "phone bill",
+      "mobile", "recharge", "broadband",
     ],
     "Entertainment": [
       "netflix", "spotify", "cinema", "movie", "concert", "game",
       "playstation", "xbox", "disney", "youtube", "subscription",
-      "ticket", "stream",
     ],
     "Health": [
       "medicine", "pharmacy", "doctor", "dentist", "hospital",
-      "vitamin", "paracetamol", "ibuprofen", "bandage", "prescription",
-      "insurance", "gym", "health", "clinic",
+      "vitamin", "gym", "health", "clinic",
     ],
     "Rent & Housing": [
-      "rent", "mortgage", "property", "home insurance", "repair",
-      "maintenance", "furniture", "plumber", "electrician",
+      "rent", "mortgage", "repair", "maintenance", "furniture",
     ],
   };
 
   return items.map((item) => {
     const lower = (item.item + " " + item.rawName).toLowerCase();
     let category = "Other";
-
     for (const [cat, keywords] of Object.entries(keywordMap)) {
       if (keywords.some((kw) => lower.includes(kw))) {
         category = cat;
         break;
       }
     }
-
-    return {
-      ...item,
-      category,
-      confidence: category !== "Other" ? 80 : 0,
-    };
-  });
-}
-
-// Fix rotation only
-async function fixRotation(file) {
-  return new Promise(async (resolve) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-
-    let orientation = 1;
-    try {
-      const exifr = (await import("exifr")).default;
-      const exifData = await exifr.parse(file, { pick: ["Orientation"] });
-      if (exifData?.Orientation) orientation = exifData.Orientation;
-    } catch (e) {}
-
-    if (orientation === 1) {
-      resolve({ blob: file, previewUrl: url });
-      return;
-    }
-
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-      let width = img.width;
-      let height = img.height;
-
-      if (orientation >= 5 && orientation <= 8) {
-        canvas.width = height;
-        canvas.height = width;
-      } else {
-        canvas.width = width;
-        canvas.height = height;
-      }
-
-      ctx.save();
-      switch (orientation) {
-        case 2: ctx.transform(-1, 0, 0, 1, canvas.width, 0); break;
-        case 3: ctx.transform(-1, 0, 0, -1, canvas.width, canvas.height); break;
-        case 4: ctx.transform(1, 0, 0, -1, 0, canvas.height); break;
-        case 5: ctx.transform(0, 1, 1, 0, 0, 0); break;
-        case 6: ctx.transform(0, 1, -1, 0, canvas.width, 0); break;
-        case 7: ctx.transform(0, -1, -1, 0, canvas.width, canvas.height); break;
-        case 8: ctx.transform(0, -1, 1, 0, 0, canvas.height); break;
-        default: break;
-      }
-      ctx.drawImage(img, 0, 0, width, height);
-      ctx.restore();
-
-      canvas.toBlob((blob) => {
-        const previewUrl = canvas.toDataURL("image/png");
-        URL.revokeObjectURL(url);
-        resolve({ blob, previewUrl });
-      }, "image/png", 1.0);
-    };
-    img.src = url;
+    return { ...item, category, confidence: category !== "Other" ? 80 : 0 };
   });
 }
 
 export default function BillScanner({ onExpenseAdded }) {
-  const [mode, setMode] = useState("choose"); // choose, scan, paste
+  const [mode, setMode] = useState("choose");
   const [step, setStep] = useState("upload");
   const [imagePreview, setImagePreview] = useState(null);
-  const [imageBlob, setImageBlob] = useState(null);
+  const [imageFile, setImageFile] = useState(null);
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState("");
   const [items, setItems] = useState([]);
@@ -248,58 +147,84 @@ export default function BillScanner({ onExpenseAdded }) {
   const [pasteText, setPasteText] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [compressionInfo, setCompressionInfo] = useState("");
   const fileRef = useRef(null);
   const cameraRef = useRef(null);
 
   const handleImageSelect = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    setMode("scan");
+    setStep("compressing");
+    setProgressText("Preparing image...");
+
     try {
-      const { blob, previewUrl } = await fixRotation(file);
-      setImageBlob(blob);
-      setImagePreview(previewUrl);
+      const originalSize = (file.size / 1024 / 1024).toFixed(1);
+
+      // Compress if needed
+      const compressed = await compressImage(file);
+      const newSize = (compressed.size / 1024 / 1024).toFixed(1);
+
+      if (file.size !== compressed.size) {
+        setCompressionInfo(`Compressed: ${originalSize}MB → ${newSize}MB`);
+      } else {
+        setCompressionInfo(`Size: ${originalSize}MB`);
+      }
+
+      setImageFile(compressed);
+
+      // Create preview from original for display
+      const url = URL.createObjectURL(file);
+      setImagePreview(url);
       setStep("ready");
     } catch (err) {
+      setImageFile(file);
       const url = URL.createObjectURL(file);
-      setImageBlob(file);
       setImagePreview(url);
       setStep("ready");
     }
   };
 
   const handleScan = async () => {
-    if (!imageBlob) return;
+    if (!imageFile) return;
     setStep("scanning");
-    setProgress(0);
-    setProgressText("Loading OCR engine...");
+    setProgress(10);
+    setProgressText("Uploading to OCR engine...");
 
     try {
-      const Tesseract = (await import("tesseract.js")).default;
-      const result = await Tesseract.recognize(imageBlob, "eng", {
-        logger: (m) => {
-          if (m.status === "recognizing text") {
-            setProgress(Math.round(m.progress * 100));
-            if (m.progress < 0.3) setProgressText("Scanning lines...");
-            else if (m.progress < 0.6) setProgressText("Detecting prices...");
-            else if (m.progress < 0.9) setProgressText("Almost there...");
-            else setProgressText("Finishing up...");
-          } else if (m.status === "loading tesseract core") {
-            setProgressText("Loading OCR engine...");
-          } else if (m.status === "initializing tesseract") {
-            setProgressText("Initializing...");
-          } else if (m.status === "loading language traineddata") {
-            setProgressText("Loading language data...");
-          }
-        },
+      const formData = new FormData();
+      formData.append("image", imageFile);
+
+      setProgress(30);
+      setProgressText("Reading text from bill...");
+
+      const res = await fetch("/api/scan", {
+        method: "POST",
+        body: formData,
       });
 
-      const fullText = result.data.text;
+      setProgress(70);
+      setProgressText("Processing results...");
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "OCR failed");
+      }
+
+      const fullText = data.text;
       setRawText(fullText);
+
+      setProgress(90);
+      setProgressText("Extracting items...");
+
       const extracted = processReceiptText(fullText);
       finishExtraction(extracted);
     } catch (err) {
-      setMessage("Failed to read the image. Try a clearer photo.");
-      setStep("upload");
+      console.error("Scan error:", err);
+      setMessage("Failed to scan: " + err.message + ". Try a clearer photo or paste the list.");
+      setStep("ready");
     }
   };
 
@@ -309,7 +234,6 @@ export default function BillScanner({ onExpenseAdded }) {
       return;
     }
     setMessage("");
-
     const rawItems = parsePastedList(pasteText);
     const categorized = categorizePastedItems(rawItems);
     setRawText(pasteText);
@@ -322,7 +246,6 @@ export default function BillScanner({ onExpenseAdded }) {
       setStep("review");
       return;
     }
-
     const today = new Date().toISOString().split("T")[0];
     const withMeta = extracted.map((item, i) => ({
       ...item,
@@ -330,7 +253,6 @@ export default function BillScanner({ onExpenseAdded }) {
       date: today,
       selected: true,
     }));
-
     setItems(withMeta);
     setStep("review");
   };
@@ -402,13 +324,14 @@ export default function BillScanner({ onExpenseAdded }) {
     setMode("choose");
     setStep("upload");
     setImagePreview(null);
-    setImageBlob(null);
+    setImageFile(null);
     setItems([]);
     setRawText("");
     setPasteText("");
     setMessage("");
     setProgress(0);
     setProgressText("");
+    setCompressionInfo("");
   };
 
   const selectedTotal = items
@@ -440,7 +363,7 @@ export default function BillScanner({ onExpenseAdded }) {
                 ref={fileRef}
                 type="file"
                 accept="image/*"
-                onChange={(e) => { setMode("scan"); handleImageSelect(e); }}
+                onChange={handleImageSelect}
                 style={{ display: "none" }}
               />
             </div>
@@ -453,7 +376,7 @@ export default function BillScanner({ onExpenseAdded }) {
                 type="file"
                 accept="image/*"
                 capture="environment"
-                onChange={(e) => { setMode("scan"); handleImageSelect(e); }}
+                onChange={handleImageSelect}
                 style={{ display: "none" }}
               />
             </div>
@@ -468,8 +391,19 @@ export default function BillScanner({ onExpenseAdded }) {
             <ul className="tips-list">
               <li>Use good lighting for photos — avoid shadows</li>
               <li>Printed receipts work better than handwritten</li>
+              <li>Large images are auto-compressed for you</li>
               <li>For paste: any format works — &quot;Milk - €2.50&quot; or &quot;Milk 2.50&quot;</li>
             </ul>
+          </div>
+        </div>
+      )}
+
+      {/* COMPRESSING */}
+      {step === "compressing" && (
+        <div className="scanning-area">
+          <div className="scan-animation">
+            <div className="scan-icon">⚙️</div>
+            <p className="scan-status">{progressText}</p>
           </div>
         </div>
       )}
@@ -510,6 +444,9 @@ export default function BillScanner({ onExpenseAdded }) {
         <div className="upload-area">
           <div className="image-preview-container">
             <img src={imagePreview} alt="Bill preview" className="image-preview" />
+            {compressionInfo && (
+              <p className="compression-info">{compressionInfo}</p>
+            )}
             <div className="preview-actions">
               <button className="btn btn-primary" onClick={handleScan}>
                 Scan This Bill
@@ -544,7 +481,7 @@ export default function BillScanner({ onExpenseAdded }) {
               <p className="no-items-title">No items detected</p>
               <p className="no-items-subtitle">
                 {mode === "paste"
-                  ? "Could not find items with prices. Make sure each line has an item name and a number."
+                  ? "Could not find items with prices. Make sure each line has a name and a number."
                   : "The image might be blurry. Try a clearer photo or paste a list instead."}
               </p>
               {rawText && (
@@ -660,6 +597,13 @@ export default function BillScanner({ onExpenseAdded }) {
                 </button>
               </div>
             </>
+          )}
+
+          {rawText && items.length > 0 && (
+            <details className="raw-text-section">
+              <summary>View raw OCR text</summary>
+              <pre className="raw-text-content">{rawText}</pre>
+            </details>
           )}
         </div>
       )}
