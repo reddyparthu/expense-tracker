@@ -1,5 +1,6 @@
 "use client";
 import { signOut } from "next-auth/react";
+import ThemeToggle from "./ThemeToggle";
 
 const navItems = [
   { id: "dashboard", label: "Dashboard", icon: "📊" },
@@ -11,9 +12,12 @@ const navItems = [
 export default function Sidebar({ activeTab, onTabChange, stats, user }) {
   return (
     <aside className="sidebar">
-      <div className="sidebar-logo">
-        <span className="logo-icon">💰</span>
-        <span className="logo-text">SpendWise</span>
+      <div className="sidebar-top-row">
+        <div className="sidebar-logo">
+          <span className="logo-icon">💰</span>
+          <span className="logo-text">SpendWise</span>
+        </div>
+        <ThemeToggle />
       </div>
 
       <div className="sidebar-user">
