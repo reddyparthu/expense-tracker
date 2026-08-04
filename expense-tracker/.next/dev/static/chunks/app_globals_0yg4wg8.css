@@ -1,0 +1,386 @@
+/* [project]/app/globals.css [app-client] (css) */
+*, :before, :after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #f5f6fa;
+  --surface: #fff;
+  --text: #1a1a2e;
+  --text-muted: #6b7280;
+  --primary: #4f46e5;
+  --primary-light: #e0e7ff;
+  --green: #10b981;
+  --green-light: #d1fae5;
+  --amber: #f59e0b;
+  --amber-light: #fef3c7;
+  --red: #ef4444;
+  --border: #e5e7eb;
+  --radius: 12px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif;
+}
+
+.loading-screen {
+  height: 100vh;
+  color: var(--text-muted);
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  display: flex;
+}
+
+.spinner {
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  animation: .8s linear infinite spin;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 20px 16px 60px;
+}
+
+.app-header {
+  text-align: center;
+  padding: 24px 0 8px;
+}
+
+.app-header h1 {
+  letter-spacing: -.5px;
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.header-subtitle {
+  color: var(--text-muted);
+  margin-top: 4px;
+  font-size: .9rem;
+}
+
+.tab-nav {
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  gap: 4px;
+  margin: 20px 0;
+  padding: 4px;
+  display: flex;
+}
+
+.tab {
+  color: var(--text-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  flex: 1;
+  padding: 10px 12px;
+  font-size: .9rem;
+  font-weight: 500;
+  transition: all .2s;
+}
+
+.tab.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.tab:hover:not(.active) {
+  background: var(--bg);
+}
+
+.summary-cards {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+  display: grid;
+}
+
+.summary-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  display: flex;
+}
+
+.summary-label {
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--text-muted);
+  font-size: .75rem;
+  font-weight: 600;
+}
+
+.summary-amount {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.summary-card.weekly .summary-amount {
+  color: var(--primary);
+}
+
+.summary-card.monthly .summary-amount {
+  color: var(--green);
+}
+
+.summary-card.total .summary-amount {
+  color: var(--amber);
+}
+
+.charts-grid {
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  display: grid;
+}
+
+.chart-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  padding: 20px;
+}
+
+.chart-card h3 {
+  color: var(--text);
+  margin-bottom: 16px;
+  font-size: .95rem;
+  font-weight: 600;
+}
+
+.no-data {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 40px 0;
+  font-size: .9rem;
+}
+
+.expense-form-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  padding: 24px;
+}
+
+.expense-form-card h2 {
+  margin-bottom: 20px;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.form-message {
+  border-radius: 8px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  font-size: .85rem;
+  font-weight: 500;
+}
+
+.form-message.success {
+  background: var(--green-light);
+  color: #065f46;
+}
+
+.form-message.error {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  color: var(--text);
+  margin-bottom: 6px;
+  font-size: .85rem;
+  font-weight: 500;
+  display: block;
+}
+
+.form-group input {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  outline: none;
+  width: 100%;
+  padding: 10px 14px;
+  font-size: .95rem;
+  transition: border-color .2s;
+}
+
+.form-group input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.form-row {
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  display: grid;
+}
+
+.category-grid {
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  display: grid;
+}
+
+.category-btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: .82rem;
+  transition: all .15s;
+}
+
+.category-btn:hover {
+  border-color: var(--primary);
+}
+
+.category-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.submit-btn {
+  background: var(--primary);
+  color: #fff;
+  cursor: pointer;
+  border: none;
+  border-radius: 8px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: background .2s;
+}
+
+.submit-btn:hover {
+  background: #4338ca;
+}
+
+.submit-btn:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.expense-list-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  padding: 24px;
+}
+
+.expense-list-card h2 {
+  margin-bottom: 16px;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.expense-list {
+  flex-direction: column;
+  display: flex;
+}
+
+.expense-item {
+  border-bottom: 1px solid var(--border);
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  display: flex;
+}
+
+.expense-item:last-child {
+  border-bottom: none;
+}
+
+.expense-info {
+  flex-direction: column;
+  gap: 2px;
+  display: flex;
+}
+
+.expense-name {
+  font-size: .95rem;
+  font-weight: 500;
+}
+
+.expense-meta {
+  color: var(--text-muted);
+  font-size: .78rem;
+}
+
+.expense-right {
+  align-items: center;
+  gap: 12px;
+  display: flex;
+}
+
+.expense-amount {
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.delete-btn {
+  width: 28px;
+  height: 28px;
+  color: var(--text-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  justify-content: center;
+  align-items: center;
+  font-size: .8rem;
+  transition: all .15s;
+  display: flex;
+}
+
+.delete-btn:hover {
+  color: var(--red);
+  background: #fee2e2;
+}
+
+@media (max-width: 600px) {
+  .summary-cards, .charts-grid, .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .category-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .app-header h1 {
+    font-size: 1.4rem;
+  }
+}
+
+/*# sourceMappingURL=app_globals_0yg4wg8.css.map*/
