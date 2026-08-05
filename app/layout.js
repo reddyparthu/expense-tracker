@@ -14,11 +14,12 @@ export const metadata = {
     statusBarStyle: "default",
     title: "SpendWise",
   },
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 1,
-  },
+};
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 export default function RootLayout({ children }) {
@@ -29,6 +30,15 @@ export default function RootLayout({ children }) {
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
       <body className={inter.className}>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js');
+              }
+            `,
+          }}
+        />
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
