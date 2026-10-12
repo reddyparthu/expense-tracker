@@ -81,12 +81,12 @@ function breakdown(mode, range, list) {
   return categoryTotals(list).map((c) => ({ name: catMeta(c.name).short, amount: c.value, fill: catColor(c.name) }));
 }
 
-const EYEBROW = {
-  day: "Daily Feature",
-  week: "Weekly Feature",
-  month: "Monthly Feature",
-  year: "Yearly Feature",
-  all: "The Complete Story",
+const OVERVIEW = {
+  day: "Daily overview",
+  week: "Weekly overview",
+  month: "Monthly overview",
+  year: "Yearly overview",
+  all: "All-time overview",
 };
 
 const PREV_LABEL = {
@@ -132,7 +132,7 @@ export default function Dashboard({ expenses, period, onPeriodChange, onNavigate
   const categoryData = categoryTotals(periodExpenses);
   const topCat = categoryData[0];
   const days = groupByDay(periodExpenses);
-  const top10 = [...periodExpenses].sort((a, b) => b.amount - a.amount).slice(0, 10);
+  const biggest = periodExpenses.reduce((m, e) => (!m || e.amount > m.amount ? e : m), null);
   const bars = breakdown(mode, range, periodExpenses);
   // Billboard artwork: running total across the period, a smooth "journey" curve
   // (stops at today for the current period so it doesn't flatline into the future)
@@ -148,7 +148,7 @@ export default function Dashboard({ expenses, period, onPeriodChange, onNavigate
 
   const openPeriod = () =>
     setDetail({
-      eyebrow: EYEBROW[mode],
+      eyebrow: OVERVIEW[mode],
       title: range.label,
       subtitle: `${periodExpenses.length} expenses`,
       match: (e) => inRange(expenseKey(e), range),
@@ -207,9 +207,7 @@ export default function Dashboard({ expenses, period, onPeriodChange, onNavigate
           <div className="hero-shade" />
 
           <div className="hero-content">
-            <span className="eyebrow">
-              <span className="eyebrow-mark">S</span> {EYEBROW[mode]}
-            </span>
+            <span className="eyebrow">{OVERVIEW[mode]}</span>
             <span className="hero-period">{range.label}</span>
             <h1 className="hero-title">{euro(total)}</h1>
 
@@ -228,17 +226,17 @@ export default function Dashboard({ expenses, period, onPeriodChange, onNavigate
               {periodExpenses.length === 0
                 ? "Nothing spent in this period yet. Swipe back to explore earlier periods, or add your first expense."
                 : topCat
-                ? `${topCat.name} leads at ${((topCat.value / total) * 100).toFixed(0)}% of your spending. Biggest single spend: ${top10[0].item} (${euro(top10[0].amount)}).`
+                ? `${topCat.name} leads at ${((topCat.value / total) * 100).toFixed(0)}% of your spending. Biggest single spend: ${biggest.item} (${euro(biggest.amount)}).`
                 : null}
             </p>
 
             <div className="hero-actions">
-              <button className="btn-play" onClick={() => onNavigate("add")}>
-                <span className="btn-play-icon">＋</span> Add Expense
+              <button className="btn btn-primary hero-btn" onClick={() => onNavigate("add")}>
+                ＋ Add expense
               </button>
               {periodExpenses.length > 0 && (
-                <button className="btn-info" onClick={openPeriod}>
-                  <span className="btn-info-icon">i</span> More Info
+                <button className="btn btn-ghost hero-btn" onClick={openPeriod}>
+                  View details →
                 </button>
               )}
             </div>
@@ -248,7 +246,7 @@ export default function Dashboard({ expenses, period, onPeriodChange, onNavigate
         {periodExpenses.length > 0 && (
           <div className="rows">
             {/* ===== Recent days ===== */}
-            <Row title="Day by Day" meta={`${days.length} days`}>
+            <Row title="Day by day" meta={`${days.length} days`}>
               {days.map(({ key, items, total: dayTotal }) => {
                 const d = keyToDate(key);
                 const { title } = dayHeading(key);
@@ -281,30 +279,8 @@ export default function Dashboard({ expenses, period, onPeriodChange, onNavigate
               })}
             </Row>
 
-            {/* ===== Top 10 ===== */}
-            <Row title={`Top ${top10.length} Spends`} meta={range.label}>
-              {top10.map((e, i) => {
-                const meta = catMeta(e.category);
-                return (
-                  <button key={e._id} className="top-tile" onClick={() => openDay(expenseKey(e))}>
-                    <span className="top-rank" aria-hidden="true">{i + 1}</span>
-                    <span className="tile top-card" style={{ background: meta.art }}>
-                      <span className="top-card-icon">{meta.icon}</span>
-                      <span className="top-card-body">
-                        <span className="top-card-name">{e.item}</span>
-                        <span className="top-card-amount">{euro(e.amount)}</span>
-                        <span className="top-card-date">
-                          {keyToDate(expenseKey(e)).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
-                        </span>
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </Row>
-
             {/* ===== Categories ===== */}
-            <Row title="Categories" meta={`${categoryData.length} genres`}>
+            <Row title="Spending by category" meta={`${categoryData.length} ${categoryData.length === 1 ? "category" : "categories"}`}>
               {categoryData.map((c) => {
                 const meta = catMeta(c.name);
                 const pct = (c.value / total) * 100;

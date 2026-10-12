@@ -9,7 +9,6 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import Row from "./Row";
 import { catIcon, catColor, catMeta } from "@/lib/categories";
 import { tooltipProps, axisProps, ACCENT } from "@/lib/chartTheme";
 import {
@@ -171,7 +170,7 @@ export default function Insights({ expenses }) {
   const frequent = Object.values(itemMap)
     .filter((i) => i.count > 1)
     .sort((a, b) => b.count - a.count || b.total - a.total)
-    .slice(0, 10);
+    .slice(0, 6);
 
   return (
     <div className="insights">
@@ -313,30 +312,7 @@ export default function Insights({ expenses }) {
         )}
       </div>
 
-      {frequent.length > 0 && (
-        <Row title="Your Regulars" meta="most frequent purchases">
-          {frequent.map((i, idx) => {
-            const meta = catMeta(i.category);
-            return (
-              <div key={i.name} className="top-tile static">
-                <span className="top-rank" aria-hidden="true">{idx + 1}</span>
-                <span className="tile top-card" style={{ background: meta.art }}>
-                  <span className="top-card-icon">{meta.icon}</span>
-                  <span className="top-card-body">
-                    <span className="top-card-name">{i.name}</span>
-                    <span className="top-card-amount">{i.count}×</span>
-                    <span className="top-card-date">
-                      {euro(i.total)} total · avg {euro(i.total / i.count)}
-                    </span>
-                  </span>
-                </span>
-              </div>
-            );
-          })}
-        </Row>
-      )}
-
-      <div className="bottom-grid single">
+      <div className="bottom-grid">
         <div className="panel">
           <h3 className="panel-title">Biggest Expenses (90 days)</h3>
           {biggest.length ? (
@@ -361,6 +337,28 @@ export default function Insights({ expenses }) {
           )}
         </div>
 
+        <div className="panel">
+          <h3 className="panel-title">Most Frequent Purchases</h3>
+          {frequent.length ? (
+            <div className="recent-list">
+              {frequent.map((i) => (
+                <div key={i.name} className="recent-item">
+                  <div className="recent-info">
+                    <span className="recent-name">
+                      {catIcon(i.category)} {i.name}
+                    </span>
+                    <span className="recent-cat">
+                      {i.count}× · avg {euro(i.total / i.count)}
+                    </span>
+                  </div>
+                  <span className="recent-amount">{euro(i.total)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="no-data">No repeat purchases yet</p>
+          )}
+        </div>
       </div>
     </div>
   );
