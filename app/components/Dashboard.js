@@ -17,8 +17,9 @@ import PeriodPicker, { SwipeArea } from "./PeriodPicker";
 import Row from "./Row";
 import DetailModal from "./DetailModal";
 import { groupByDay, dayHeading } from "./DayGroups";
-import { catMeta, catColor } from "@/lib/categories";
-import { tooltipProps, axisProps, ACCENT } from "@/lib/chartTheme";
+import { catMeta } from "@/lib/categories";
+import { CatIcon } from "./Icon";
+import { tooltipProps, axisProps, ACCENT, accentShade } from "@/lib/chartTheme";
 import {
   getRange,
   shiftAnchor,
@@ -78,7 +79,7 @@ function breakdown(mode, range, list) {
       .sort()
       .map((k) => ({ name: `${MONTHS[Number(k.slice(5, 7)) - 1]} ${k.slice(2, 4)}`, amount: round2(totals[k]) }));
   }
-  return categoryTotals(list).map((c) => ({ name: catMeta(c.name).short, amount: c.value, fill: catColor(c.name) }));
+  return categoryTotals(list).map((c) => ({ name: catMeta(c.name).short, amount: c.value }));
 }
 
 const OVERVIEW = {
@@ -165,12 +166,10 @@ export default function Dashboard({ expenses, period, onPeriodChange, onNavigate
   };
 
   const openCategory = (name) => {
-    const meta = catMeta(name);
     setDetail({
       eyebrow: range.label,
       title: name,
-      icon: meta.icon,
-      art: meta.art,
+      icon: <CatIcon name={name} size={120} />,
       match: (e) => e.category === name && inRange(expenseKey(e), range),
     });
   };
@@ -262,8 +261,8 @@ export default function Dashboard({ expenses, period, onPeriodChange, onNavigate
                     </div>
                     <div className="day-tile-chips">
                       {items.slice(0, 3).map((e) => (
-                        <span key={e._id} className="day-tile-chip" style={{ "--cat": catColor(e.category) }}>
-                          {catMeta(e.category).icon} {e.item}
+                        <span key={e._id} className="day-tile-chip">
+                          <CatIcon name={e.category} size={13} /> {e.item}
                         </span>
                       ))}
                       {items.length > 3 && <span className="day-tile-more">+{items.length - 3} more</span>}
@@ -282,16 +281,15 @@ export default function Dashboard({ expenses, period, onPeriodChange, onNavigate
             {/* ===== Categories ===== */}
             <Row title="Spending by category" meta={`${categoryData.length} ${categoryData.length === 1 ? "category" : "categories"}`}>
               {categoryData.map((c) => {
-                const meta = catMeta(c.name);
                 const pct = (c.value / total) * 100;
                 return (
-                  <button
-                    key={c.name}
-                    className="tile cat-tile"
-                    style={{ background: meta.art }}
-                    onClick={() => openCategory(c.name)}
-                  >
-                    <span className="cat-tile-icon">{meta.icon}</span>
+                  <button key={c.name} className="tile cat-tile" onClick={() => openCategory(c.name)}>
+                    <span className="cat-tile-icon">
+                      <CatIcon name={c.name} size={88} />
+                    </span>
+                    <span className="cat-tile-badge">
+                      <CatIcon name={c.name} size={18} />
+                    </span>
                     <span className="cat-tile-shade" />
                     <span className="cat-tile-body">
                       <span className="cat-tile-name">{c.name}</span>
@@ -320,15 +318,14 @@ export default function Dashboard({ expenses, period, onPeriodChange, onNavigate
                     <BarChart data={bars} margin={{ left: -12, right: 4, top: 8 }}>
                       <defs>
                         <linearGradient id="barFill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#ff7a59" />
-                          <stop offset="100%" stopColor={ACCENT} />
+                          <stop offset="0%" stopColor={ACCENT} />
+                          <stop offset="100%" stopColor={ACCENT} stopOpacity={0.45} />
                         </linearGradient>
                       </defs>
                       <XAxis dataKey="name" {...axisProps} interval={mode === "month" ? 4 : "preserveStartEnd"} />
                       <YAxis {...axisProps} width={44} />
                       <Tooltip {...tooltipProps} formatter={(v) => [`€${v}`, "Spent"]} />
                       <Bar dataKey="amount" fill="url(#barFill)" radius={[6, 6, 2, 2]} maxBarSize={36}>
-                        {mode === "day" && bars.map((b) => <Cell key={b.name} fill={b.fill} />)}
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
@@ -349,8 +346,8 @@ export default function Dashboard({ expenses, period, onPeriodChange, onNavigate
                           paddingAngle={2}
                           stroke="none"
                         >
-                          {categoryData.map((c) => (
-                            <Cell key={c.name} fill={catColor(c.name)} />
+                          {categoryData.map((c, i) => (
+                            <Cell key={c.name} fill={accentShade(i, categoryData.length)} />
                           ))}
                         </Pie>
                         <Tooltip {...tooltipProps} formatter={(v, n) => [`€${v}`, n]} />
@@ -362,9 +359,9 @@ export default function Dashboard({ expenses, period, onPeriodChange, onNavigate
                     </div>
                   </div>
                   <div className="legend">
-                    {categoryData.map((c) => (
+                    {categoryData.map((c, i) => (
                       <span key={c.name} className="legend-item">
-                        <span className="legend-dot" style={{ background: catColor(c.name) }} />
+                        <span className="legend-dot" style={{ background: accentShade(i, categoryData.length) }} />
                         {catMeta(c.name).short}
                       </span>
                     ))}

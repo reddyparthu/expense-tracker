@@ -1,6 +1,7 @@
 "use client";
 import { localDateKey } from "@/lib/period";
 import { useState, useRef } from "react";
+import Icon from "./Icon";
 import { processReceiptText } from "@/lib/ocrUtils";
 import { compressImage } from "@/lib/compressImage";
 
@@ -353,7 +354,9 @@ export default function BillScanner({ onExpenseAdded }) {
         <div className="upload-area">
           <div className="upload-options three-col">
             <div className="dropzone" onClick={() => fileRef.current?.click()}>
-              <div className="dropzone-icon">🖼️</div>
+              <div className="dropzone-icon">
+                <Icon name="image" size={30} strokeWidth={1.6} />
+              </div>
               <p className="dropzone-title">Gallery</p>
               <p className="dropzone-subtitle">Pick a photo of your bill</p>
               <input
@@ -365,7 +368,9 @@ export default function BillScanner({ onExpenseAdded }) {
               />
             </div>
             <div className="dropzone" onClick={() => cameraRef.current?.click()}>
-              <div className="dropzone-icon">📸</div>
+              <div className="dropzone-icon">
+                <Icon name="camera" size={30} strokeWidth={1.6} />
+              </div>
               <p className="dropzone-title">Camera</p>
               <p className="dropzone-subtitle">Snap the bill</p>
               <input
@@ -378,7 +383,9 @@ export default function BillScanner({ onExpenseAdded }) {
               />
             </div>
             <div className="dropzone" onClick={() => { setMode("paste"); setStep("paste"); }}>
-              <div className="dropzone-icon">📋</div>
+              <div className="dropzone-icon">
+                <Icon name="clipboard" size={30} strokeWidth={1.6} />
+              </div>
               <p className="dropzone-title">Paste List</p>
               <p className="dropzone-subtitle">Paste from ChatGPT etc.</p>
             </div>
@@ -399,7 +406,9 @@ export default function BillScanner({ onExpenseAdded }) {
       {step === "compressing" && (
         <div className="scanning-area">
           <div className="scan-animation">
-            <div className="scan-icon">⚙️</div>
+            <div className="scan-icon">
+              <span className="spinner-ring" />
+            </div>
             <p className="scan-status">{progressText}</p>
           </div>
         </div>
@@ -460,7 +469,9 @@ export default function BillScanner({ onExpenseAdded }) {
       {step === "scanning" && (
         <div className="scanning-area">
           <div className="scan-animation">
-            <div className="scan-icon">🔍</div>
+            <div className="scan-icon">
+              <Icon name="search" size={40} strokeWidth={1.6} />
+            </div>
             <p className="scan-status">{progressText}</p>
           </div>
           <div className="progress-bar-container">
@@ -608,7 +619,9 @@ export default function BillScanner({ onExpenseAdded }) {
       {/* DONE */}
       {step === "done" && (
         <div className="done-area">
-          <div className="done-icon">✅</div>
+          <div className="done-icon">
+            <Icon name="check" size={30} strokeWidth={2.4} />
+          </div>
           <p className="done-title">All expenses saved!</p>
           <button className="btn btn-primary" onClick={reset}>
             Add More

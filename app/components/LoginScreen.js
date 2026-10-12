@@ -2,6 +2,7 @@
 import { signIn } from "next-auth/react";
 import FluidBackground from "./FluidBackground";
 import { Logo } from "./NavBar";
+import { CatIcon } from "./Icon";
 import { catMeta } from "@/lib/categories";
 
 // Decorative product preview shown beside the sign-in copy (sample numbers only)
@@ -69,13 +70,13 @@ export default function LoginScreen() {
               const meta = catMeta(c.name);
               return (
                 <div key={c.name} className="preview-cat">
-                  <span className="preview-cat-icon" style={{ background: meta.art }}>
-                    {meta.icon}
+                  <span className="preview-cat-icon">
+                    <CatIcon name={c.name} />
                   </span>
                   <span className="preview-cat-info">
                     <span className="preview-cat-name">{meta.short}</span>
                     <span className="preview-cat-bar">
-                      <span style={{ width: `${c.pct * 2}%`, background: meta.color }} />
+                      <span style={{ width: `${c.pct * 2}%` }} />
                     </span>
                   </span>
                   <span className="preview-cat-amount">{c.amount}</span>

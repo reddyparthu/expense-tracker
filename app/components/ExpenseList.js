@@ -4,6 +4,7 @@ import PeriodPicker, { SwipeArea } from "./PeriodPicker";
 import DayGroups, { groupByDay } from "./DayGroups";
 import { getRange, filterByRange, sum, euro } from "@/lib/period";
 import { CATEGORIES } from "@/lib/categories";
+import Icon from "./Icon";
 
 export default function ExpenseList({ expenses, onDelete, period, onPeriodChange }) {
   const [search, setSearch] = useState("");
@@ -56,13 +57,13 @@ export default function ExpenseList({ expenses, onDelete, period, onPeriodChange
       <PeriodPicker period={period} onChange={onPeriodChange} />
 
       <div className="chips" data-noswipe>
-        {[{ name: "All", icon: "✦" }, ...CATEGORIES].map((c) => (
+        {[{ name: "All", icon: "all" }, ...CATEGORIES].map((c) => (
           <button
             key={c.name}
             className={`chip ${filterCat === c.name ? "active" : ""}`}
             onClick={() => setFilterCat(c.name)}
           >
-            <span>{c.icon}</span> {c.short || c.name}
+            <Icon name={c.icon} size={15} /> {c.short || c.name}
           </button>
         ))}
       </div>

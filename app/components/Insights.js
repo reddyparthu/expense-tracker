@@ -9,8 +9,9 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { catIcon, catColor, catMeta } from "@/lib/categories";
-import { tooltipProps, axisProps, ACCENT } from "@/lib/chartTheme";
+import { catMeta } from "@/lib/categories";
+import Icon, { CatIcon } from "./Icon";
+import { tooltipProps, axisProps, ACCENT, accentShade } from "@/lib/chartTheme";
 import {
   expenseKey,
   keyToDate,
@@ -119,10 +120,19 @@ export default function Insights({ expenses }) {
       catTotals6[c] = (catTotals6[c] || 0) + v;
     });
   });
-  const trendCats = Object.keys(catTotals6).sort((a, b) => catTotals6[b] - catTotals6[a]);
+  // Top 3 categories get their own shade; the rest fold into one series to keep the chart calm
+  const ranked = Object.keys(catTotals6).sort((a, b) => catTotals6[b] - catTotals6[a]);
+  const OTHERS = "Everything else";
+  const trendCats = ranked.length > 4 ? [...ranked.slice(0, 3), OTHERS] : ranked;
   const trendData = months6.map((m) => {
     const row = { name: m.label };
-    trendCats.forEach((c) => (row[c] = round2(byMonthCat[m.key]?.[c] || 0)));
+    const cats = byMonthCat[m.key] || {};
+    trendCats.forEach((c) => {
+      row[c] =
+        c === OTHERS
+          ? round2(ranked.slice(3).reduce((s, k) => s + (cats[k] || 0), 0))
+          : round2(cats[c] || 0);
+    });
     return row;
   });
 
@@ -183,7 +193,9 @@ export default function Insights({ expenses }) {
       {/* Headline numbers */}
       <div className="summary-cards">
         <div className="summary-card today-card">
-          <span className="summary-icon">🗓️</span>
+          <span className="summary-icon">
+            <Icon name="calendar" />
+          </span>
           <div className="summary-text">
             <span className="summary-label">This Month So Far</span>
             <span className="summary-amount">{euro(monthSoFar)}</span>
@@ -195,7 +207,9 @@ export default function Insights({ expenses }) {
           </div>
         </div>
         <div className="summary-card weekly-card">
-          <span className="summary-icon">🔮</span>
+          <span className="summary-icon">
+            <Icon name="trend" />
+          </span>
           <div className="summary-text">
             <span className="summary-label">Projected Month-End</span>
             <span className="summary-amount">{euro(projected)}</span>
@@ -203,7 +217,9 @@ export default function Insights({ expenses }) {
           </div>
         </div>
         <div className="summary-card monthly-card">
-          <span className="summary-icon">📊</span>
+          <span className="summary-icon">
+            <Icon name="chart" />
+          </span>
           <div className="summary-text">
             <span className="summary-label">Average Month</span>
             <span className="summary-amount">{avgMonth !== null ? euro(avgMonth) : "—"}</span>
@@ -215,7 +231,9 @@ export default function Insights({ expenses }) {
           </div>
         </div>
         <div className="summary-card total-card">
-          <span className="summary-icon">📅</span>
+          <span className="summary-icon">
+            <Icon name="clock" />
+          </span>
           <div className="summary-text">
             <span className="summary-label">Priciest Weekday</span>
             <span className="summary-amount">{peakDay.amount > 0 ? peakDay.name : "—"}</span>
@@ -251,9 +269,9 @@ export default function Insights({ expenses }) {
                 <XAxis dataKey="name" {...axisProps} />
                 <YAxis {...axisProps} width={44} />
                 <Tooltip formatter={(v) => `€${v}`} {...tooltipProps} />
-                <Legend wrapperStyle={{ fontSize: 11, color: "var(--text-muted)" }} iconType="circle" iconSize={8} formatter={(v) => catMeta(v).short} />
-                {trendCats.map((c) => (
-                  <Bar key={c} dataKey={c} stackId="a" fill={catColor(c)} />
+                <Legend wrapperStyle={{ fontSize: 11, color: "var(--text-muted)" }} iconType="circle" iconSize={8} formatter={(v) => (v === OTHERS ? "Other" : catMeta(v).short)} />
+                {trendCats.map((c, i) => (
+                  <Bar key={c} dataKey={c} stackId="a" fill={c === OTHERS ? "var(--bar-muted)" : accentShade(i, 4)} />
                 ))}
               </BarChart>
             </ResponsiveContainer>
@@ -292,7 +310,7 @@ export default function Insights({ expenses }) {
               return (
                 <div key={c.name} className="compare-row">
                   <span className="compare-name">
-                    {catIcon(c.name)} {c.name}
+                    <CatIcon name={c.name} size={16} /> {c.name}
                   </span>
                   <span className="compare-vals">
                     <span className="compare-cur">{euro(c.cur)}</span>
@@ -321,7 +339,7 @@ export default function Insights({ expenses }) {
                 <div key={e._id} className="recent-item">
                   <div className="recent-info">
                     <span className="recent-name">
-                      {catIcon(e.category)} {e.item}
+                      <CatIcon name={e.category} size={16} /> {e.item}
                     </span>
                     <span className="recent-cat">
                       {keyToDate(expenseKey(e)).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ·{" "}
@@ -345,7 +363,7 @@ export default function Insights({ expenses }) {
                 <div key={i.name} className="recent-item">
                   <div className="recent-info">
                     <span className="recent-name">
-                      {catIcon(i.category)} {i.name}
+                      <CatIcon name={i.category} size={16} /> {i.name}
                     </span>
                     <span className="recent-cat">
                       {i.count}× · avg {euro(i.total / i.count)}

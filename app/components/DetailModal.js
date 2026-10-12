@@ -5,7 +5,7 @@ import DayGroups from "./DayGroups";
 import { sum, euro } from "@/lib/period";
 
 // "More info" overlay: a hero banner plus that slice of expenses grouped by day.
-// detail = { eyebrow, title, subtitle, art, icon, match(expense) }
+// detail = { eyebrow, title, subtitle, icon, match(expense) }
 // Filtering happens here so deletes made inside the modal show up immediately.
 export default function DetailModal({ detail, expenses: all, onClose, onDelete }) {
   useEffect(() => {
@@ -21,7 +21,7 @@ export default function DetailModal({ detail, expenses: all, onClose, onDelete }
   }, [detail, onClose]);
 
   if (!detail) return null;
-  const { eyebrow, title, subtitle, art, icon, match } = detail;
+  const { eyebrow, title, subtitle, icon, match } = detail;
   const expenses = all.filter(match);
   const total = sum(expenses);
   const biggest = expenses.reduce((m, e) => (!m || e.amount > m.amount ? e : m), null);
@@ -30,7 +30,7 @@ export default function DetailModal({ detail, expenses: all, onClose, onDelete }
   return createPortal(
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-hero" style={{ background: art || "var(--hero-art)" }}>
+        <div className="modal-hero">
           {icon && <span className="modal-hero-icon">{icon}</span>}
           <div className="modal-hero-fade" />
           <button className="modal-close" onClick={onClose} aria-label="Close">

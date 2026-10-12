@@ -2,6 +2,7 @@
 import { localDateKey } from "@/lib/period";
 import { useState } from "react";
 import { CATEGORIES as categories } from "@/lib/categories";
+import Icon from "./Icon";
 
 
 export default function ExpenseForm({ onExpenseAdded }) {
@@ -99,10 +100,11 @@ export default function ExpenseForm({ onExpenseAdded }) {
                 key={cat.name}
                 type="button"
                 className={`category-btn ${form.category === cat.name ? "active" : ""}`}
-                style={{ "--cat": cat.color }}
                 onClick={() => setForm({ ...form, category: cat.name })}
               >
-                <span className="cat-icon">{cat.icon}</span>
+                <span className="cat-icon">
+                  <Icon name={cat.icon} size={20} />
+                </span>
                 {cat.name}
               </button>
             ))}
