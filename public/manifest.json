@@ -4,8 +4,8 @@
   "description": "Track your daily expenses with smart bill scanning",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#6366f1",
+  "background_color": "#07070b",
+  "theme_color": "#07070b",
   "orientation": "portrait",
   "icons": [
     {

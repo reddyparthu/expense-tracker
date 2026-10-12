@@ -9,8 +9,9 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { COLORS } from "./Dashboard";
-import { catIcon } from "./DayGroups";
+import Row from "./Row";
+import { catIcon, catColor, catMeta } from "@/lib/categories";
+import { tooltipProps, axisProps, ACCENT } from "@/lib/chartTheme";
 import {
   expenseKey,
   keyToDate,
@@ -24,7 +25,6 @@ import {
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const tooltipStyle = { borderRadius: "8px", border: "1px solid #e5e7eb", fontSize: "13px" };
 
 const monthKey = (y, m) => `${y}-${String(m + 1).padStart(2, "0")}`;
 
@@ -63,7 +63,7 @@ function exportCsv(expenses) {
 export default function Insights({ expenses }) {
   if (expenses.length === 0) {
     return (
-      <div className="card">
+      <div className="panel">
         <p className="no-data">Add some expenses to unlock insights.</p>
       </div>
     );
@@ -171,7 +171,7 @@ export default function Insights({ expenses }) {
   const frequent = Object.values(itemMap)
     .filter((i) => i.count > 1)
     .sort((a, b) => b.count - a.count || b.total - a.total)
-    .slice(0, 6);
+    .slice(0, 10);
 
   return (
     <div className="insights">
@@ -226,16 +226,16 @@ export default function Insights({ expenses }) {
       </div>
 
       {/* 12 months */}
-      <div className="chart-card full-width card">
-        <h3>Last 12 Months</h3>
+      <div className="panel panel-wide">
+        <h3 className="panel-title">Last 12 Months</h3>
         <ResponsiveContainer width="100%" height={230}>
           <BarChart data={monthlyData}>
-            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} width={44} />
-            <Tooltip formatter={(v) => [`€${v}`, "Spent"]} contentStyle={tooltipStyle} />
-            <Bar dataKey="amount" radius={[6, 6, 0, 0]}>
+            <XAxis dataKey="name" {...axisProps} />
+            <YAxis {...axisProps} width={44} />
+            <Tooltip formatter={(v) => [`€${v}`, "Spent"]} {...tooltipProps} />
+            <Bar dataKey="amount" radius={[6, 6, 2, 2]} maxBarSize={36}>
               {monthlyData.map((d) => (
-                <Cell key={d.name} fill={d.current ? "#6366f1" : "#a5b4fc"} />
+                <Cell key={d.name} fill={d.current ? ACCENT : "var(--bar-muted)"} />
               ))}
             </Bar>
           </BarChart>
@@ -244,17 +244,17 @@ export default function Insights({ expenses }) {
 
       <div className="charts-grid">
         {/* Category trend */}
-        <div className="chart-card card">
-          <h3>Category Trend (6 months)</h3>
+        <div className="panel">
+          <h3 className="panel-title">Category Trend (6 months)</h3>
           {trendCats.length ? (
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={trendData}>
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} width={44} />
-                <Tooltip formatter={(v) => `€${v}`} contentStyle={tooltipStyle} />
-                <Legend wrapperStyle={{ fontSize: 11 }} formatter={(v) => v.split(" ")[0]} />
-                {trendCats.map((c, i) => (
-                  <Bar key={c} dataKey={c} stackId="a" fill={COLORS[i % COLORS.length]} />
+                <XAxis dataKey="name" {...axisProps} />
+                <YAxis {...axisProps} width={44} />
+                <Tooltip formatter={(v) => `€${v}`} {...tooltipProps} />
+                <Legend wrapperStyle={{ fontSize: 11, color: "var(--text-muted)" }} iconType="circle" iconSize={8} formatter={(v) => catMeta(v).short} />
+                {trendCats.map((c) => (
+                  <Bar key={c} dataKey={c} stackId="a" fill={catColor(c)} />
                 ))}
               </BarChart>
             </ResponsiveContainer>
@@ -264,16 +264,16 @@ export default function Insights({ expenses }) {
         </div>
 
         {/* Weekday pattern */}
-        <div className="chart-card card">
-          <h3>Average by Weekday (90 days)</h3>
+        <div className="panel">
+          <h3 className="panel-title">Average by Weekday (90 days)</h3>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={weekdayData}>
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} width={40} />
-              <Tooltip formatter={(v) => [`€${v}`, "Avg"]} contentStyle={tooltipStyle} />
-              <Bar dataKey="amount" radius={[6, 6, 0, 0]}>
+              <XAxis dataKey="name" {...axisProps} />
+              <YAxis {...axisProps} width={40} />
+              <Tooltip formatter={(v) => [`€${v}`, "Avg"]} {...tooltipProps} />
+              <Bar dataKey="amount" radius={[6, 6, 2, 2]} maxBarSize={36}>
                 {weekdayData.map((d) => (
-                  <Cell key={d.name} fill={d.name === peakDay.name ? "#f59e0b" : "#0ea5e9"} />
+                  <Cell key={d.name} fill={d.name === peakDay.name ? ACCENT : "var(--bar-muted)"} />
                 ))}
               </Bar>
             </BarChart>
@@ -282,8 +282,8 @@ export default function Insights({ expenses }) {
       </div>
 
       {/* Category vs usual */}
-      <div className="card insight-block">
-        <h3>This Month vs Your Usual</h3>
+      <div className="panel panel-wide insight-block">
+        <h3 className="panel-title">This Month vs Your Usual</h3>
         <p className="insight-note">Compared with your average of the previous 3 months</p>
         {catCompare.length ? (
           <div className="compare-list">
@@ -313,9 +313,32 @@ export default function Insights({ expenses }) {
         )}
       </div>
 
-      <div className="bottom-grid">
-        <div className="card">
-          <h3>Biggest Expenses (90 days)</h3>
+      {frequent.length > 0 && (
+        <Row title="Your Regulars" meta="most frequent purchases">
+          {frequent.map((i, idx) => {
+            const meta = catMeta(i.category);
+            return (
+              <div key={i.name} className="top-tile static">
+                <span className="top-rank" aria-hidden="true">{idx + 1}</span>
+                <span className="tile top-card" style={{ background: meta.art }}>
+                  <span className="top-card-icon">{meta.icon}</span>
+                  <span className="top-card-body">
+                    <span className="top-card-name">{i.name}</span>
+                    <span className="top-card-amount">{i.count}×</span>
+                    <span className="top-card-date">
+                      {euro(i.total)} total · avg {euro(i.total / i.count)}
+                    </span>
+                  </span>
+                </span>
+              </div>
+            );
+          })}
+        </Row>
+      )}
+
+      <div className="bottom-grid single">
+        <div className="panel">
+          <h3 className="panel-title">Biggest Expenses (90 days)</h3>
           {biggest.length ? (
             <div className="recent-list">
               {biggest.map((e) => (
@@ -338,28 +361,6 @@ export default function Insights({ expenses }) {
           )}
         </div>
 
-        <div className="card">
-          <h3>Most Frequent Purchases</h3>
-          {frequent.length ? (
-            <div className="recent-list">
-              {frequent.map((i) => (
-                <div key={i.name} className="recent-item">
-                  <div className="recent-info">
-                    <span className="recent-name">
-                      {catIcon(i.category)} {i.name}
-                    </span>
-                    <span className="recent-cat">
-                      {i.count}× · avg {euro(i.total / i.count)}
-                    </span>
-                  </div>
-                  <span className="recent-amount">{euro(i.total)}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="no-data">No repeat purchases yet</p>
-          )}
-        </div>
       </div>
     </div>
   );

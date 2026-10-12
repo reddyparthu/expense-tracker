@@ -1,19 +1,9 @@
 "use client";
 import { useState } from "react";
+import { catIcon, catColor } from "@/lib/categories";
 import { expenseKey, keyToDate, localDateKey, addDays, sum, euro } from "@/lib/period";
 
-const CAT_ICONS = {
-  "Food & Groceries": "🛒",
-  "Rent & Housing": "🏠",
-  Transport: "🚗",
-  Utilities: "💡",
-  Entertainment: "🎬",
-  Health: "💊",
-  Shopping: "🛍️",
-  Other: "📦",
-};
-
-export const catIcon = (c) => CAT_ICONS[c] || "📦";
+export { catIcon };
 
 // Group expenses by day, newest day first. Within a day, keep incoming order.
 export function groupByDay(expenses) {
@@ -79,7 +69,9 @@ export default function DayGroups({ expenses, onDelete, limitDays, groups: preGr
               <div className="day-items">
                 {items.map((exp) => (
                   <div key={exp._id} className="day-item">
-                    <span className="day-item-icon">{catIcon(exp.category)}</span>
+                    <span className="day-item-icon" style={{ "--cat": catColor(exp.category) }}>
+                      {catIcon(exp.category)}
+                    </span>
                     <div className="day-item-info">
                       <span className="day-item-name">{exp.item}</span>
                       <span className="day-item-cat">{exp.category}</span>

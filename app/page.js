@@ -2,20 +2,19 @@
 import { useSession } from "next-auth/react";
 import { useState, useEffect } from "react";
 import LoginScreen from "./components/LoginScreen";
-import Sidebar from "./components/Sidebar";
+import NavBar from "./components/NavBar";
+import FluidBackground from "./components/FluidBackground";
 import ExpenseForm from "./components/ExpenseForm";
 import Dashboard from "./components/Dashboard";
 import ExpenseList from "./components/ExpenseList";
 import BillScanner from "./components/BillScanner";
 import Insights from "./components/Insights";
-import { localDateKey, expenseKey } from "@/lib/period";
 
 export default function Home() {
   const { data: session, status } = useSession();
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   // Shared by Dashboard and History so swiping to a past period sticks across tabs
   const [period, setPeriod] = useState(() => ({ mode: "month", anchor: new Date(), dir: 0 }));
 
@@ -53,14 +52,17 @@ export default function Home() {
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
-    setSidebarOpen(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   if (status === "loading" || (session && loading)) {
     return (
       <div className="loading-screen">
-        <div className="spinner"></div>
-        <p>Loading SpendWise...</p>
+        <FluidBackground />
+        <div className="loader">
+          <span className="logo-mark big">S</span>
+          <span className="loader-bar" />
+        </div>
       </div>
     );
   }
@@ -69,62 +71,39 @@ export default function Home() {
     return <LoginScreen />;
   }
 
-  const now = new Date();
-  const todayStr = localDateKey(now);
-  const monthStr = todayStr.slice(0, 7);
-  const stats = {
-    today: expenses
-      .filter((e) => expenseKey(e) === todayStr)
-      .reduce((sum, e) => sum + e.amount, 0),
-    monthly: expenses
-      .filter((e) => expenseKey(e).startsWith(monthStr))
-      .reduce((sum, e) => sum + e.amount, 0),
-    totalEntries: expenses.length,
+  const PAGES = {
+    add: { eyebrow: "New entry", title: "Add Expense" },
+    scan: { eyebrow: "Smart capture", title: "Scan a Bill" },
+    history: { eyebrow: "Your timeline", title: "History" },
+    insights: { eyebrow: "Deep dive", title: "Insights" },
   };
+  const pageInfo = PAGES[activeTab];
 
   return (
-    <div className="app-layout">
-      <header className="mobile-header">
-        <button className="menu-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>
-          ☰
-        </button>
-        <span className="mobile-title">💰 SpendWise</span>
-      </header>
+    <div className="app">
+      <FluidBackground />
+      <NavBar active={activeTab} onChange={handleTabChange} user={session.user} />
 
-      {sidebarOpen && (
-        <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
-      )}
+      <main className={`main ${activeTab === "dashboard" ? "is-home" : ""}`}>
+        {pageInfo && (
+          <header className="page-head">
+            <span className="eyebrow">{pageInfo.eyebrow}</span>
+            <h1 className="page-title">{pageInfo.title}</h1>
+          </header>
+        )}
 
-      <div className={`sidebar-wrapper ${sidebarOpen ? "open" : ""}`}>
-        <Sidebar
-          activeTab={activeTab}
-          onTabChange={handleTabChange}
-          stats={stats}
-          user={session.user}
-        />
-      </div>
-
-      <main className="main-content">
-        <div className="content-header">
-          <h1 className="page-title">
-            {activeTab === "dashboard" && "Dashboard"}
-            {activeTab === "add" && "Add Expense"}
-            {activeTab === "scan" && "Scan Bill"}
-            {activeTab === "history" && "History"}
-            {activeTab === "insights" && "Insights"}
-          </h1>
-        </div>
-
-        <div className="content-body">
+        <div className="page-body" key={activeTab}>
           {activeTab === "dashboard" && (
-            <Dashboard expenses={expenses} period={period} onPeriodChange={setPeriod} />
+            <Dashboard
+              expenses={expenses}
+              period={period}
+              onPeriodChange={setPeriod}
+              onNavigate={handleTabChange}
+              onDelete={handleDelete}
+            />
           )}
-          {activeTab === "add" && (
-            <ExpenseForm onExpenseAdded={() => fetchExpenses()} />
-          )}
-          {activeTab === "scan" && (
-            <BillScanner onExpenseAdded={() => fetchExpenses()} />
-          )}
+          {activeTab === "add" && <ExpenseForm onExpenseAdded={() => fetchExpenses()} />}
+          {activeTab === "scan" && <BillScanner onExpenseAdded={() => fetchExpenses()} />}
           {activeTab === "history" && (
             <ExpenseList
               expenses={expenses}

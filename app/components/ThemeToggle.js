@@ -1,27 +1,31 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useSyncExternalStore } from "react";
 
-export default function ThemeToggle() {
-  const [dark, setDark] = useState(false);
+// The theme attribute is set before first paint by a script in layout.js,
+// so we just mirror <html data-theme> here.
+const subscribe = (cb) => {
+  const obs = new MutationObserver(cb);
+  obs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  return () => obs.disconnect();
+};
+const getTheme = () => document.documentElement.getAttribute("data-theme") || "dark";
 
-  useEffect(() => {
-    const saved = localStorage.getItem("theme");
-    if (saved === "dark" || (!saved && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
-      setDark(true);
-      document.documentElement.setAttribute("data-theme", "dark");
-    }
-  }, []);
+export default function ThemeToggle({ withLabel = false }) {
+  const theme = useSyncExternalStore(subscribe, getTheme, () => "dark");
+  const dark = theme === "dark";
 
   const toggle = () => {
-    const next = !dark;
-    setDark(next);
-    document.documentElement.setAttribute("data-theme", next ? "dark" : "light");
-    localStorage.setItem("theme", next ? "dark" : "light");
+    const next = dark ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    try {
+      localStorage.setItem("theme", next);
+    } catch {}
   };
 
   return (
-    <button className="theme-toggle" onClick={toggle} title="Toggle theme">
-      {dark ? "☀️" : "🌙"}
+    <button className={`theme-toggle ${withLabel ? "with-label" : ""}`} onClick={toggle} title="Toggle theme">
+      <span className="theme-toggle-icon">{dark ? "☀" : "☾"}</span>
+      {withLabel && <span>{dark ? "Light mode" : "Dark mode"}</span>}
     </button>
   );
 }

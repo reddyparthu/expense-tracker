@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import {
   BarChart,
   Bar,
@@ -9,13 +10,20 @@ import {
   PieChart,
   Pie,
   Cell,
+  AreaChart,
+  Area,
 } from "recharts";
 import PeriodPicker, { SwipeArea } from "./PeriodPicker";
-import DayGroups from "./DayGroups";
+import Row from "./Row";
+import DetailModal from "./DetailModal";
+import { groupByDay, dayHeading } from "./DayGroups";
+import { catMeta, catColor } from "@/lib/categories";
+import { tooltipProps, axisProps, ACCENT } from "@/lib/chartTheme";
 import {
   getRange,
   shiftAnchor,
   filterByRange,
+  inRange,
   expenseKey,
   keyToDate,
   localDateKey,
@@ -25,15 +33,8 @@ import {
   euro,
 } from "@/lib/period";
 
-export const COLORS = [
-  "#6366f1", "#0ea5e9", "#10b981", "#f59e0b",
-  "#ef4444", "#8b5cf6", "#ec4899", "#6b7280",
-];
-
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-const tooltipStyle = { borderRadius: "8px", border: "1px solid #e5e7eb", fontSize: "13px" };
 
 export function categoryTotals(list) {
   const map = {};
@@ -41,11 +42,11 @@ export function categoryTotals(list) {
     map[e.category] = (map[e.category] || 0) + e.amount;
   });
   return Object.entries(map)
-    .map(([name, value]) => ({ name, value: round2(value) }))
+    .map(([name, value]) => ({ name, value: round2(value), count: list.filter((e) => e.category === name).length }))
     .sort((a, b) => b.value - a.value);
 }
 
-// Bars for the period: hours don't exist, so Day mode shows categories instead.
+// Bars for the period. A single day has no time axis, so Day mode shows categories.
 function breakdown(mode, range, list) {
   const byKey = {};
   list.forEach((e) => {
@@ -53,17 +54,10 @@ function breakdown(mode, range, list) {
     byKey[k] = (byKey[k] || 0) + e.amount;
   });
 
-  if (mode === "week") {
-    const start = keyToDate(range.start);
-    return WEEKDAYS.map((name, i) => ({
-      name,
-      amount: round2(byKey[localDateKey(addDays(start, i))] || 0),
-    }));
-  }
-  if (mode === "month") {
+  if (mode === "week" || mode === "month") {
     const start = keyToDate(range.start);
     return Array.from({ length: range.days }, (_, i) => ({
-      name: String(i + 1),
+      name: mode === "week" ? WEEKDAYS[i] : String(i + 1),
       amount: round2(byKey[localDateKey(addDays(start, i))] || 0),
     }));
   }
@@ -82,20 +76,17 @@ function breakdown(mode, range, list) {
     });
     return Object.keys(totals)
       .sort()
-      .map((k) => ({
-        name: `${MONTHS[Number(k.slice(5, 7)) - 1]} ${k.slice(2, 4)}`,
-        amount: round2(totals[k]),
-      }));
+      .map((k) => ({ name: `${MONTHS[Number(k.slice(5, 7)) - 1]} ${k.slice(2, 4)}`, amount: round2(totals[k]) }));
   }
-  return categoryTotals(list).map((c) => ({ name: c.name.split(" ")[0], amount: c.value }));
+  return categoryTotals(list).map((c) => ({ name: catMeta(c.name).short, amount: c.value, fill: catColor(c.name) }));
 }
 
-const BREAKDOWN_TITLE = {
-  day: "Spending by Category",
-  week: "Daily Spending",
-  month: "Daily Spending",
-  year: "Monthly Spending",
-  all: "Monthly Spending",
+const EYEBROW = {
+  day: "Daily Feature",
+  week: "Weekly Feature",
+  month: "Monthly Feature",
+  year: "Yearly Feature",
+  all: "The Complete Story",
 };
 
 const PREV_LABEL = {
@@ -105,13 +96,21 @@ const PREV_LABEL = {
   year: "vs last year",
 };
 
-export default function Dashboard({ expenses, period, onPeriodChange }) {
+const BREAKDOWN_TITLE = {
+  day: "By Category",
+  week: "Day by Day",
+  month: "Day by Day",
+  year: "Month by Month",
+  all: "Month by Month",
+};
+
+export default function Dashboard({ expenses, period, onPeriodChange, onNavigate, onDelete }) {
+  const [detail, setDetail] = useState(null);
   const { mode, anchor } = period;
   const range = getRange(mode, anchor);
   const periodExpenses = filterByRange(expenses, range);
   const total = sum(periodExpenses);
 
-  // Previous period comparison
   let change = null;
   if (mode !== "all") {
     const prevTotal = sum(filterByRange(expenses, getRange(mode, shiftAnchor(mode, anchor, -1))));
@@ -123,155 +122,285 @@ export default function Dashboard({ expenses, period, onPeriodChange }) {
   if (mode !== "day") {
     const today = localDateKey();
     let first = range.start;
-    let last = range.end && range.end < today ? range.end : today;
-    if (mode === "all") {
-      const keys = periodExpenses.map(expenseKey).sort();
-      first = keys[0];
-    }
+    const last = range.end && range.end < today ? range.end : today;
+    if (mode === "all") first = periodExpenses.map(expenseKey).sort()[0];
     if (first && last >= first) {
-      const days = Math.round((keyToDate(last) - keyToDate(first)) / 86400000) + 1;
-      avgPerDay = total / days;
+      avgPerDay = total / (Math.round((keyToDate(last) - keyToDate(first)) / 86400000) + 1);
     }
   }
 
-  const biggest = periodExpenses.reduce((m, e) => (!m || e.amount > m.amount ? e : m), null);
   const categoryData = categoryTotals(periodExpenses);
-  const topCategories = categoryData.slice(0, 5);
+  const topCat = categoryData[0];
+  const days = groupByDay(periodExpenses);
+  const top10 = [...periodExpenses].sort((a, b) => b.amount - a.amount).slice(0, 10);
   const bars = breakdown(mode, range, periodExpenses);
+  // Billboard artwork: running total across the period, a smooth "journey" curve
+  // (stops at today for the current period so it doesn't flatline into the future)
+  let running = 0;
+  let elapsed = bars.length;
+  const todayKey = localDateKey();
+  if ((mode === "week" || mode === "month") && range.end > todayKey) {
+    elapsed = Math.round((keyToDate(todayKey) - keyToDate(range.start)) / 86400000) + 1;
+  } else if (mode === "year" && range.end > todayKey) {
+    elapsed = new Date().getMonth() + 1;
+  }
+  const heroArt = mode === "day" ? [] : bars.slice(0, elapsed).map((b) => ({ amount: (running += b.amount) }));
+
+  const openPeriod = () =>
+    setDetail({
+      eyebrow: EYEBROW[mode],
+      title: range.label,
+      subtitle: `${periodExpenses.length} expenses`,
+      match: (e) => inRange(expenseKey(e), range),
+    });
+
+  const openDay = (key) => {
+    const { title, sub } = dayHeading(key);
+    setDetail({
+      eyebrow: "Day",
+      title,
+      subtitle: sub,
+      match: (e) => expenseKey(e) === key,
+    });
+  };
+
+  const openCategory = (name) => {
+    const meta = catMeta(name);
+    setDetail({
+      eyebrow: range.label,
+      title: name,
+      icon: meta.icon,
+      art: meta.art,
+      match: (e) => e.category === name && inRange(expenseKey(e), range),
+    });
+  };
 
   return (
-    <div className="dashboard">
+    <div className="home">
       <PeriodPicker period={period} onChange={onPeriodChange} />
 
       <SwipeArea period={period} onChange={onPeriodChange}>
-        {/* Summary Cards */}
-        <div className="summary-cards">
-          <div className="summary-card today-card">
-            <span className="summary-icon">💸</span>
-            <div className="summary-text">
-              <span className="summary-label">Spent</span>
-              <span className="summary-amount">{euro(total)}</span>
+        {/* ===== Billboard ===== */}
+        <section className="hero">
+          <div className="hero-art" aria-hidden="true">
+            {heroArt.length > 1 && (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={heroArt} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                  <defs>
+                    <linearGradient id="heroFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={ACCENT} stopOpacity={0.55} />
+                      <stop offset="100%" stopColor={ACCENT} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <Area
+                    type="monotone"
+                    dataKey="amount"
+                    stroke={ACCENT}
+                    strokeWidth={2}
+                    fill="url(#heroFill)"
+                    isAnimationActive={false}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+          <div className="hero-shade" />
+
+          <div className="hero-content">
+            <span className="eyebrow">
+              <span className="eyebrow-mark">S</span> {EYEBROW[mode]}
+            </span>
+            <span className="hero-period">{range.label}</span>
+            <h1 className="hero-title">{euro(total)}</h1>
+
+            <div className="hero-meta">
               {change !== null && (
-                <span className={`summary-change ${change > 0 ? "up" : "down"}`}>
+                <span className={`hero-change ${change > 0 ? "up" : "down"}`}>
                   {change > 0 ? "▲" : "▼"} {Math.abs(change).toFixed(0)}% {PREV_LABEL[mode]}
                 </span>
               )}
-            </div>
-          </div>
-          <div className="summary-card weekly-card">
-            <span className="summary-icon">🧾</span>
-            <div className="summary-text">
-              <span className="summary-label">Expenses</span>
-              <span className="summary-amount">{periodExpenses.length}</span>
-            </div>
-          </div>
-          <div className="summary-card monthly-card">
-            <span className="summary-icon">📈</span>
-            <div className="summary-text">
-              <span className="summary-label">{avgPerDay !== null ? "Avg / Day" : "Avg / Expense"}</span>
-              <span className="summary-amount">
-                {avgPerDay !== null
-                  ? euro(avgPerDay)
-                  : euro(periodExpenses.length ? total / periodExpenses.length : 0)}
-              </span>
-            </div>
-          </div>
-          <div className="summary-card total-card">
-            <span className="summary-icon">🏆</span>
-            <div className="summary-text">
-              <span className="summary-label">Biggest</span>
-              <span className="summary-amount">{biggest ? euro(biggest.amount) : "—"}</span>
-              {biggest && <span className="summary-sub">{biggest.item}</span>}
-            </div>
-          </div>
-        </div>
-
-        {periodExpenses.length === 0 ? (
-          <div className="card">
-            <p className="no-data">No expenses · {range.label}</p>
-          </div>
-        ) : (
-          <>
-            <div className="charts-grid">
-              <div className="chart-card">
-                <h3>{BREAKDOWN_TITLE[mode]}</h3>
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={bars}>
-                    <XAxis
-                      dataKey="name"
-                      tick={{ fontSize: 11 }}
-                      interval={mode === "month" ? 4 : "preserveStartEnd"}
-                    />
-                    <YAxis tick={{ fontSize: 11 }} width={40} />
-                    <Tooltip formatter={(v) => [`€${v}`, "Spent"]} contentStyle={tooltipStyle} />
-                    <Bar dataKey="amount" fill="#6366f1" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div className="chart-card">
-                <h3>By Category</h3>
-                <ResponsiveContainer width="100%" height={220}>
-                  <PieChart>
-                    <Pie
-                      data={categoryData}
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={80}
-                      innerRadius={45}
-                      dataKey="value"
-                      paddingAngle={3}
-                      label={({ name, percent }) => `${name.split(" ")[0]} ${(percent * 100).toFixed(0)}%`}
-                      labelLine={true}
-                    >
-                      {categoryData.map((entry, i) => (
-                        <Cell key={entry.name} fill={COLORS[i % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(v) => `€${v}`} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
+              <span>{periodExpenses.length} expenses</span>
+              {avgPerDay !== null && <span className="hero-badge">{euro(avgPerDay)}/day</span>}
+              {days.length > 0 && mode !== "day" && <span>{days.length} active days</span>}
             </div>
 
-            <div className="bottom-grid">
-              <div className="card">
-                <h3>Top Categories</h3>
-                <div className="top-categories">
-                  {topCategories.map((cat, i) => (
-                    <div key={cat.name} className="top-cat-item">
-                      <div className="top-cat-info">
-                        <div className="top-cat-dot" style={{ background: COLORS[i] }}></div>
-                        <span className="top-cat-name">{cat.name}</span>
-                      </div>
-                      <div className="top-cat-right">
-                        <span className="top-cat-amount">
-                          {euro(cat.value)}{" "}
-                          <span className="top-cat-pct">{((cat.value / total) * 100).toFixed(0)}%</span>
-                        </span>
-                        <div className="top-cat-bar-bg">
-                          <div
-                            className="top-cat-bar-fill"
-                            style={{
-                              width: `${(cat.value / categoryData[0].value) * 100}%`,
-                              background: COLORS[i],
-                            }}
-                          ></div>
-                        </div>
-                      </div>
+            <p className="hero-desc">
+              {periodExpenses.length === 0
+                ? "Nothing spent in this period yet. Swipe back to explore earlier periods, or add your first expense."
+                : topCat
+                ? `${topCat.name} leads at ${((topCat.value / total) * 100).toFixed(0)}% of your spending. Biggest single spend: ${top10[0].item} (${euro(top10[0].amount)}).`
+                : null}
+            </p>
+
+            <div className="hero-actions">
+              <button className="btn-play" onClick={() => onNavigate("add")}>
+                <span className="btn-play-icon">＋</span> Add Expense
+              </button>
+              {periodExpenses.length > 0 && (
+                <button className="btn-info" onClick={openPeriod}>
+                  <span className="btn-info-icon">i</span> More Info
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {periodExpenses.length > 0 && (
+          <div className="rows">
+            {/* ===== Recent days ===== */}
+            <Row title="Day by Day" meta={`${days.length} days`}>
+              {days.map(({ key, items, total: dayTotal }) => {
+                const d = keyToDate(key);
+                const { title } = dayHeading(key);
+                return (
+                  <button key={key} className="tile day-tile" onClick={() => openDay(key)}>
+                    <div className="day-tile-top">
+                      <span className="day-tile-num">{d.getDate()}</span>
+                      <span className="day-tile-mon">
+                        {MONTHS[d.getMonth()]}
+                        <br />
+                        <small>{title === "Today" || title === "Yesterday" ? title : d.toLocaleDateString("en-GB", { weekday: "short" })}</small>
+                      </span>
                     </div>
-                  ))}
+                    <div className="day-tile-chips">
+                      {items.slice(0, 3).map((e) => (
+                        <span key={e._id} className="day-tile-chip" style={{ "--cat": catColor(e.category) }}>
+                          {catMeta(e.category).icon} {e.item}
+                        </span>
+                      ))}
+                      {items.length > 3 && <span className="day-tile-more">+{items.length - 3} more</span>}
+                    </div>
+                    <div className="day-tile-foot">
+                      <span className="tile-amount">{euro(dayTotal)}</span>
+                      <span className="tile-sub">
+                        {items.length} {items.length === 1 ? "item" : "items"}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </Row>
+
+            {/* ===== Top 10 ===== */}
+            <Row title={`Top ${top10.length} Spends`} meta={range.label}>
+              {top10.map((e, i) => {
+                const meta = catMeta(e.category);
+                return (
+                  <button key={e._id} className="top-tile" onClick={() => openDay(expenseKey(e))}>
+                    <span className="top-rank" aria-hidden="true">{i + 1}</span>
+                    <span className="tile top-card" style={{ background: meta.art }}>
+                      <span className="top-card-icon">{meta.icon}</span>
+                      <span className="top-card-body">
+                        <span className="top-card-name">{e.item}</span>
+                        <span className="top-card-amount">{euro(e.amount)}</span>
+                        <span className="top-card-date">
+                          {keyToDate(expenseKey(e)).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                        </span>
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </Row>
+
+            {/* ===== Categories ===== */}
+            <Row title="Categories" meta={`${categoryData.length} genres`}>
+              {categoryData.map((c) => {
+                const meta = catMeta(c.name);
+                const pct = (c.value / total) * 100;
+                return (
+                  <button
+                    key={c.name}
+                    className="tile cat-tile"
+                    style={{ background: meta.art }}
+                    onClick={() => openCategory(c.name)}
+                  >
+                    <span className="cat-tile-icon">{meta.icon}</span>
+                    <span className="cat-tile-shade" />
+                    <span className="cat-tile-body">
+                      <span className="cat-tile-name">{c.name}</span>
+                      <span className="cat-tile-amount">{euro(c.value)}</span>
+                      <span className="cat-tile-bar">
+                        <span style={{ width: `${pct}%` }} />
+                      </span>
+                      <span className="cat-tile-sub">
+                        {pct.toFixed(0)}% · {c.count} {c.count === 1 ? "expense" : "expenses"}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </Row>
+
+            {/* ===== Charts ===== */}
+            <section className="row">
+              <div className="row-head">
+                <h2 className="row-title">Breakdown</h2>
+              </div>
+              <div className="charts-grid">
+                <div className="panel">
+                  <h3 className="panel-title">{BREAKDOWN_TITLE[mode]}</h3>
+                  <ResponsiveContainer width="100%" height={230}>
+                    <BarChart data={bars} margin={{ left: -12, right: 4, top: 8 }}>
+                      <defs>
+                        <linearGradient id="barFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#ff7a59" />
+                          <stop offset="100%" stopColor={ACCENT} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="name" {...axisProps} interval={mode === "month" ? 4 : "preserveStartEnd"} />
+                      <YAxis {...axisProps} width={44} />
+                      <Tooltip {...tooltipProps} formatter={(v) => [`€${v}`, "Spent"]} />
+                      <Bar dataKey="amount" fill="url(#barFill)" radius={[6, 6, 2, 2]} maxBarSize={36}>
+                        {mode === "day" && bars.map((b) => <Cell key={b.name} fill={b.fill} />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="panel">
+                  <h3 className="panel-title">Share by Category</h3>
+                  <div className="donut-wrap">
+                    <ResponsiveContainer width="100%" height={230}>
+                      <PieChart>
+                        <Pie
+                          data={categoryData}
+                          cx="50%"
+                          cy="50%"
+                          outerRadius={88}
+                          innerRadius={62}
+                          dataKey="value"
+                          paddingAngle={2}
+                          stroke="none"
+                        >
+                          {categoryData.map((c) => (
+                            <Cell key={c.name} fill={catColor(c.name)} />
+                          ))}
+                        </Pie>
+                        <Tooltip {...tooltipProps} formatter={(v, n) => [`€${v}`, n]} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="donut-center">
+                      <span className="donut-label">Total</span>
+                      <span className="donut-value">{euro(total)}</span>
+                    </div>
+                  </div>
+                  <div className="legend">
+                    {categoryData.map((c) => (
+                      <span key={c.name} className="legend-item">
+                        <span className="legend-dot" style={{ background: catColor(c.name) }} />
+                        {catMeta(c.name).short}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
-
-              <div className="card">
-                <h3>Activity</h3>
-                <DayGroups expenses={periodExpenses} limitDays={4} />
-              </div>
-            </div>
-          </>
+            </section>
+          </div>
         )}
       </SwipeArea>
+
+      <DetailModal detail={detail} expenses={expenses} onClose={() => setDetail(null)} onDelete={onDelete} />
     </div>
   );
 }

@@ -340,11 +340,7 @@ export default function BillScanner({ onExpenseAdded }) {
     .reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0);
 
   return (
-    <div className="scanner-card">
-      <h2>
-        <span className="section-icon">📷</span>
-        Scan Bill
-      </h2>
+    <div className="panel scanner-card">
 
       {message && (
         <div className={`form-message ${message.includes("saved") ? "success" : "error"}`}>

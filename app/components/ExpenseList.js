@@ -3,18 +3,7 @@ import { useState, useMemo } from "react";
 import PeriodPicker, { SwipeArea } from "./PeriodPicker";
 import DayGroups, { groupByDay } from "./DayGroups";
 import { getRange, filterByRange, sum, euro } from "@/lib/period";
-
-const categories = [
-  "All",
-  "Food & Groceries",
-  "Rent & Housing",
-  "Transport",
-  "Utilities",
-  "Entertainment",
-  "Health",
-  "Shopping",
-  "Other",
-];
+import { CATEGORIES } from "@/lib/categories";
 
 export default function ExpenseList({ expenses, onDelete, period, onPeriodChange }) {
   const [search, setSearch] = useState("");
@@ -66,22 +55,27 @@ export default function ExpenseList({ expenses, onDelete, period, onPeriodChange
     <div>
       <PeriodPicker period={period} onChange={onPeriodChange} />
 
-      <div className="card">
+      <div className="chips" data-noswipe>
+        {[{ name: "All", icon: "✦" }, ...CATEGORIES].map((c) => (
+          <button
+            key={c.name}
+            className={`chip ${filterCat === c.name ? "active" : ""}`}
+            onClick={() => setFilterCat(c.name)}
+          >
+            <span>{c.icon}</span> {c.short || c.name}
+          </button>
+        ))}
+      </div>
+
+      <div className="panel">
         <div className="filters-bar">
           <input
             type="text"
             className="search-input"
-            placeholder="Search expenses..."
+            placeholder="Search titles, categories…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <select className="filter-select" value={filterCat} onChange={(e) => setFilterCat(e.target.value)}>
-            {categories.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
-          </select>
           <select className="filter-select" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
             <option value="date-desc">Newest First</option>
             <option value="date-asc">Oldest First</option>

@@ -56,6 +56,11 @@ export function SwipeArea({ period, onChange, children }) {
   const { mode, anchor, dir = 0 } = period;
 
   const onTouchStart = (e) => {
+    // Horizontal rows scroll on their own; don't treat that as a period swipe
+    if (e.target.closest("[data-noswipe]")) {
+      start.current = null;
+      return;
+    }
     const t = e.touches[0];
     start.current = { x: t.clientX, y: t.clientY };
   };

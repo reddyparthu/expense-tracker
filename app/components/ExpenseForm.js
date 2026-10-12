@@ -1,17 +1,8 @@
 "use client";
 import { localDateKey } from "@/lib/period";
 import { useState } from "react";
+import { CATEGORIES as categories } from "@/lib/categories";
 
-const categories = [
-  { name: "Food & Groceries", icon: "🛒" },
-  { name: "Rent & Housing", icon: "🏠" },
-  { name: "Transport", icon: "🚗" },
-  { name: "Utilities", icon: "💡" },
-  { name: "Entertainment", icon: "🎬" },
-  { name: "Health", icon: "💊" },
-  { name: "Shopping", icon: "🛍️" },
-  { name: "Other", icon: "📦" },
-];
 
 export default function ExpenseForm({ onExpenseAdded }) {
   const [form, setForm] = useState({
@@ -56,11 +47,7 @@ export default function ExpenseForm({ onExpenseAdded }) {
   };
 
   return (
-    <div className="card">
-      <h2>
-        <span className="section-icon">✏️</span>
-        Add Expense
-      </h2>
+    <div className="panel form-panel">
 
       {message && (
         <div className={`form-message ${message.includes("added") ? "success" : "error"}`}>
@@ -73,7 +60,7 @@ export default function ExpenseForm({ onExpenseAdded }) {
           <label>What did you spend on?</label>
           <input
             type="text"
-            placeholder="e.g. Rice, Bus ticket, Netflix"
+            placeholder="e.g. Groceries, Bus ticket, Netflix"
             value={form.item}
             onChange={(e) => setForm({ ...form, item: e.target.value })}
             required
@@ -112,6 +99,7 @@ export default function ExpenseForm({ onExpenseAdded }) {
                 key={cat.name}
                 type="button"
                 className={`category-btn ${form.category === cat.name ? "active" : ""}`}
+                style={{ "--cat": cat.color }}
                 onClick={() => setForm({ ...form, category: cat.name })}
               >
                 <span className="cat-icon">{cat.icon}</span>
