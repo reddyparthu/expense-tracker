@@ -7,6 +7,7 @@ const navItems = [
   { id: "add", label: "Add Expense", icon: "✏️" },
   { id: "scan", label: "Scan Bill", icon: "📷" },
   { id: "history", label: "History", icon: "📋" },
+  { id: "insights", label: "Insights", icon: "💡" },
 ];
 
 export default function Sidebar({ activeTab, onTabChange, stats, user }) {

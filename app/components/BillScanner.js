@@ -1,4 +1,5 @@
 "use client";
+import { localDateKey } from "@/lib/period";
 import { useState, useRef } from "react";
 import { processReceiptText } from "@/lib/ocrUtils";
 import { compressImage } from "@/lib/compressImage";
@@ -246,7 +247,7 @@ export default function BillScanner({ onExpenseAdded }) {
       setStep("review");
       return;
     }
-    const today = new Date().toISOString().split("T")[0];
+    const today = localDateKey();
     const withMeta = extracted.map((item, i) => ({
       ...item,
       id: Date.now() + i,
@@ -281,7 +282,7 @@ export default function BillScanner({ onExpenseAdded }) {
         item: "",
         amount: 0,
         category: "Other",
-        date: new Date().toISOString().split("T")[0],
+        date: localDateKey(),
         confidence: 100,
         selected: true,
         rawName: "",

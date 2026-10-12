@@ -1,4 +1,5 @@
 "use client";
+import { localDateKey } from "@/lib/period";
 import { useState } from "react";
 
 const categories = [
@@ -17,7 +18,7 @@ export default function ExpenseForm({ onExpenseAdded }) {
     item: "",
     amount: "",
     category: "Food & Groceries",
-    date: new Date().toISOString().split("T")[0],
+    date: localDateKey(),
   });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -40,7 +41,7 @@ export default function ExpenseForm({ onExpenseAdded }) {
           item: "",
           amount: "",
           category: "Food & Groceries",
-          date: new Date().toISOString().split("T")[0],
+          date: localDateKey(),
         });
         if (onExpenseAdded) onExpenseAdded();
         setTimeout(() => setMessage(""), 2500);

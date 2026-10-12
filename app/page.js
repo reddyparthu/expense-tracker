@@ -7,6 +7,8 @@ import ExpenseForm from "./components/ExpenseForm";
 import Dashboard from "./components/Dashboard";
 import ExpenseList from "./components/ExpenseList";
 import BillScanner from "./components/BillScanner";
+import Insights from "./components/Insights";
+import { localDateKey, expenseKey } from "@/lib/period";
 
 export default function Home() {
   const { data: session, status } = useSession();
@@ -14,6 +16,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Shared by Dashboard and History so swiping to a past period sticks across tabs
+  const [period, setPeriod] = useState(() => ({ mode: "month", anchor: new Date(), dir: 0 }));
 
   const fetchExpenses = async () => {
     try {
@@ -66,16 +70,14 @@ export default function Home() {
   }
 
   const now = new Date();
-  const todayStr = now.toISOString().split("T")[0];
+  const todayStr = localDateKey(now);
+  const monthStr = todayStr.slice(0, 7);
   const stats = {
     today: expenses
-      .filter((e) => new Date(e.date).toISOString().split("T")[0] === todayStr)
+      .filter((e) => expenseKey(e) === todayStr)
       .reduce((sum, e) => sum + e.amount, 0),
     monthly: expenses
-      .filter((e) => {
-        const d = new Date(e.date);
-        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-      })
+      .filter((e) => expenseKey(e).startsWith(monthStr))
       .reduce((sum, e) => sum + e.amount, 0),
     totalEntries: expenses.length,
   };
@@ -109,11 +111,14 @@ export default function Home() {
             {activeTab === "add" && "Add Expense"}
             {activeTab === "scan" && "Scan Bill"}
             {activeTab === "history" && "History"}
+            {activeTab === "insights" && "Insights"}
           </h1>
         </div>
 
         <div className="content-body">
-          {activeTab === "dashboard" && <Dashboard expenses={expenses} />}
+          {activeTab === "dashboard" && (
+            <Dashboard expenses={expenses} period={period} onPeriodChange={setPeriod} />
+          )}
           {activeTab === "add" && (
             <ExpenseForm onExpenseAdded={() => fetchExpenses()} />
           )}
@@ -121,8 +126,14 @@ export default function Home() {
             <BillScanner onExpenseAdded={() => fetchExpenses()} />
           )}
           {activeTab === "history" && (
-            <ExpenseList expenses={expenses} onDelete={handleDelete} />
+            <ExpenseList
+              expenses={expenses}
+              onDelete={handleDelete}
+              period={period}
+              onPeriodChange={setPeriod}
+            />
           )}
+          {activeTab === "insights" && <Insights expenses={expenses} />}
         </div>
       </main>
     </div>

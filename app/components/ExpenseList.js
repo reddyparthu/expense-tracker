@@ -1,5 +1,8 @@
 "use client";
 import { useState, useMemo } from "react";
+import PeriodPicker, { SwipeArea } from "./PeriodPicker";
+import DayGroups, { groupByDay } from "./DayGroups";
+import { getRange, filterByRange, sum, euro } from "@/lib/period";
 
 const categories = [
   "All",
@@ -13,139 +16,101 @@ const categories = [
   "Other",
 ];
 
-export default function ExpenseList({ expenses, onDelete }) {
+export default function ExpenseList({ expenses, onDelete, period, onPeriodChange }) {
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState("All");
   const [sortBy, setSortBy] = useState("date-desc");
 
-  const filtered = useMemo(() => {
-    let result = [...expenses];
+  const range = getRange(period.mode, period.anchor);
 
-    // Search
+  const filtered = useMemo(() => {
+    let result = filterByRange(expenses, range);
+
     if (search) {
       const q = search.toLowerCase();
       result = result.filter(
-        (e) =>
-          e.item.toLowerCase().includes(q) ||
-          e.category.toLowerCase().includes(q)
+        (e) => e.item.toLowerCase().includes(q) || e.category.toLowerCase().includes(q)
       );
     }
-
-    // Category filter
     if (filterCat !== "All") {
       result = result.filter((e) => e.category === filterCat);
     }
+    return result;
+    // range.start/end identify the period
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expenses, search, filterCat, range.start, range.end]);
 
-    // Sort
+  // Days are the blocks; sort controls the order of days and of items inside each day.
+  const groups = useMemo(() => {
+    const g = groupByDay(filtered);
+    const byAmount = (a, b) => b.amount - a.amount;
     switch (sortBy) {
-      case "date-desc":
-        result.sort((a, b) => new Date(b.date) - new Date(a.date));
-        break;
       case "date-asc":
-        result.sort((a, b) => new Date(a.date) - new Date(b.date));
+        g.reverse();
         break;
       case "amount-desc":
-        result.sort((a, b) => b.amount - a.amount);
+        g.sort((a, b) => b.total - a.total);
+        g.forEach((d) => d.items.sort(byAmount));
         break;
       case "amount-asc":
-        result.sort((a, b) => a.amount - b.amount);
+        g.sort((a, b) => a.total - b.total);
+        g.forEach((d) => d.items.sort((a, b) => a.amount - b.amount));
         break;
     }
+    return g;
+  }, [filtered, sortBy]);
 
-    return result;
-  }, [expenses, search, filterCat, sortBy]);
-
-  const filteredTotal = filtered.reduce((sum, e) => sum + e.amount, 0);
-
-  const formatDate = (dateStr) => {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  };
+  const filteredTotal = sum(filtered);
 
   return (
-    <div className="card">
-      <h2>
-        <span className="section-icon">📋</span>
-        Expense History
-      </h2>
+    <div>
+      <PeriodPicker period={period} onChange={onPeriodChange} />
 
-      {/* Filters Bar */}
-      <div className="filters-bar">
-        <input
-          type="text"
-          className="search-input"
-          placeholder="Search expenses..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-
-        <select
-          className="filter-select"
-          value={filterCat}
-          onChange={(e) => setFilterCat(e.target.value)}
-        >
-          {categories.map((cat) => (
-            <option key={cat} value={cat}>
-              {cat}
-            </option>
-          ))}
-        </select>
-
-        <select
-          className="filter-select"
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value)}
-        >
-          <option value="date-desc">Newest First</option>
-          <option value="date-asc">Oldest First</option>
-          <option value="amount-desc">Highest Amount</option>
-          <option value="amount-asc">Lowest Amount</option>
-        </select>
-      </div>
-
-      {/* Results summary */}
-      <div className="results-summary">
-        <span>{filtered.length} expenses</span>
-        <span className="results-total">Total: €{filteredTotal.toFixed(2)}</span>
-      </div>
-
-      {/* Expense List */}
-      {filtered.length === 0 ? (
-        <p className="no-data">
-          {expenses.length === 0
-            ? "No expenses yet. Start adding some!"
-            : "No expenses match your filters."}
-        </p>
-      ) : (
-        <div className="expense-list">
-          {filtered.map((expense) => (
-            <div key={expense._id} className="expense-item">
-              <div className="expense-info">
-                <span className="expense-name">{expense.item}</span>
-                <span className="expense-meta">
-                  {expense.category} · {formatDate(expense.date)}
-                </span>
-              </div>
-              <div className="expense-right">
-                <span className="expense-amount">
-                  €{expense.amount.toFixed(2)}
-                </span>
-                <button
-                  className="delete-btn"
-                  onClick={() => onDelete(expense._id)}
-                  title="Delete"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          ))}
+      <div className="card">
+        <div className="filters-bar">
+          <input
+            type="text"
+            className="search-input"
+            placeholder="Search expenses..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <select className="filter-select" value={filterCat} onChange={(e) => setFilterCat(e.target.value)}>
+            {categories.map((cat) => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
+            ))}
+          </select>
+          <select className="filter-select" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+            <option value="date-desc">Newest First</option>
+            <option value="date-asc">Oldest First</option>
+            <option value="amount-desc">Highest Day First</option>
+            <option value="amount-asc">Lowest Day First</option>
+          </select>
         </div>
-      )}
+
+        <div className="results-summary">
+          <span>
+            {filtered.length} expenses · {groups.length} {groups.length === 1 ? "day" : "days"}
+          </span>
+          <span className="results-total">Total: {euro(filteredTotal)}</span>
+        </div>
+
+        <SwipeArea period={period} onChange={onPeriodChange}>
+          {filtered.length === 0 ? (
+            <p className="no-data">
+              {expenses.length === 0
+                ? "No expenses yet. Start adding some!"
+                : search || filterCat !== "All"
+                ? "No expenses match your filters."
+                : `No expenses · ${range.label}`}
+            </p>
+          ) : (
+            <DayGroups groups={groups} onDelete={onDelete} />
+          )}
+        </SwipeArea>
+      </div>
     </div>
   );
 }
