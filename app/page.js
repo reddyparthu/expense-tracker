@@ -1,6 +1,6 @@
 "use client";
 import { useSession } from "next-auth/react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import LoginScreen from "./components/LoginScreen";
 import NavBar from "./components/NavBar";
 import FluidBackground from "./components/FluidBackground";
@@ -9,6 +9,7 @@ import Dashboard from "./components/Dashboard";
 import ExpenseList from "./components/ExpenseList";
 import BillScanner from "./components/BillScanner";
 import Insights from "./components/Insights";
+import { buildPlan } from "@/lib/forecast";
 
 export default function Home() {
   const { data: session, status } = useSession();
@@ -17,6 +18,9 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState("dashboard");
   // Shared by Dashboard and History so swiping to a past period sticks across tabs
   const [period, setPeriod] = useState(() => ({ mode: "month", anchor: new Date(), dir: 0 }));
+  const [budgets, setBudgets] = useState({});
+  // Forecasts, regular bills and alerts — recomputed whenever expenses or budgets change
+  const plan = useMemo(() => buildPlan(expenses, budgets), [expenses, budgets]);
 
   const fetchExpenses = async () => {
     try {
@@ -35,6 +39,10 @@ export default function Home() {
   useEffect(() => {
     if (session) {
       fetchExpenses();
+      fetch("/api/budgets")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => d && setBudgets(d.budgets || {}))
+        .catch(() => {});
     } else {
       setLoading(false);
     }
@@ -48,6 +56,17 @@ export default function Home() {
     } catch (err) {
       console.error("Failed to delete:", err);
     }
+  };
+
+  const saveBudgets = async (next) => {
+    const res = await fetch("/api/budgets", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ budgets: next }),
+    });
+    if (!res.ok) throw new Error("Failed to save budgets");
+    const data = await res.json();
+    setBudgets(data.budgets || {});
   };
 
   const handleTabChange = (tab) => {
@@ -100,6 +119,7 @@ export default function Home() {
               onPeriodChange={setPeriod}
               onNavigate={handleTabChange}
               onDelete={handleDelete}
+              plan={plan}
             />
           )}
           {activeTab === "add" && <ExpenseForm onExpenseAdded={() => fetchExpenses()} />}
@@ -112,7 +132,9 @@ export default function Home() {
               onPeriodChange={setPeriod}
             />
           )}
-          {activeTab === "insights" && <Insights expenses={expenses} />}
+          {activeTab === "insights" && (
+            <Insights expenses={expenses} plan={plan} budgets={budgets} onSaveBudgets={saveBudgets} />
+          )}
         </div>
       </main>
     </div>

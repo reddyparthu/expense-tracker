@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { catMeta } from "@/lib/categories";
 import Icon, { CatIcon } from "./Icon";
+import { ForecastPanel, RecurringPanel, AlertsPanel } from "./PlanPanels";
 import { tooltipProps, axisProps, ACCENT, accentShade } from "@/lib/chartTheme";
 import {
   expenseKey,
@@ -60,7 +61,7 @@ function exportCsv(expenses) {
   URL.revokeObjectURL(url);
 }
 
-export default function Insights({ expenses }) {
+export default function Insights({ expenses, plan, budgets, onSaveBudgets }) {
   if (expenses.length === 0) {
     return (
       <div className="panel">
@@ -211,9 +212,11 @@ export default function Insights({ expenses }) {
             <Icon name="trend" />
           </span>
           <div className="summary-text">
-            <span className="summary-label">Projected Month-End</span>
-            <span className="summary-amount">{euro(projected)}</span>
-            <span className="summary-sub">at {euro(monthSoFar / dayOfMonth)}/day</span>
+            <span className="summary-label">Expected Month-End</span>
+            <span className="summary-amount">{euro(plan ? plan.forecast.forecast : projected)}</span>
+            <span className="summary-sub">
+              {plan?.forecast.usual ? `usual ${euro(plan.forecast.usual)}` : `at ${euro(monthSoFar / dayOfMonth)}/day`}
+            </span>
           </div>
         </div>
         <div className="summary-card monthly-card">
@@ -241,6 +244,16 @@ export default function Insights({ expenses }) {
           </div>
         </div>
       </div>
+
+      {plan && (
+        <>
+          <ForecastPanel plan={plan} budgets={budgets} onSaveBudgets={onSaveBudgets} />
+          <div className="bottom-grid plan-grid">
+            <AlertsPanel alerts={plan.alerts} />
+            <RecurringPanel plan={plan} />
+          </div>
+        </>
+      )}
 
       {/* 12 months */}
       <div className="panel panel-wide">

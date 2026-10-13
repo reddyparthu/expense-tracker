@@ -16,6 +16,7 @@ import {
 import PeriodPicker, { SwipeArea } from "./PeriodPicker";
 import Row from "./Row";
 import DetailModal from "./DetailModal";
+import { AlertsPanel, UpcomingRow } from "./PlanPanels";
 import { groupByDay, dayHeading } from "./DayGroups";
 import { catMeta } from "@/lib/categories";
 import { CatIcon } from "./Icon";
@@ -23,6 +24,7 @@ import { tooltipProps, axisProps, ACCENT, accentShade } from "@/lib/chartTheme";
 import {
   getRange,
   shiftAnchor,
+  isCurrentPeriod,
   filterByRange,
   inRange,
   expenseKey,
@@ -105,7 +107,7 @@ const BREAKDOWN_TITLE = {
   all: "Month by Month",
 };
 
-export default function Dashboard({ expenses, period, onPeriodChange, onNavigate, onDelete }) {
+export default function Dashboard({ expenses, period, onPeriodChange, onNavigate, onDelete, plan }) {
   const [detail, setDetail] = useState(null);
   const { mode, anchor } = period;
   const range = getRange(mode, anchor);
@@ -241,6 +243,14 @@ export default function Dashboard({ expenses, period, onPeriodChange, onNavigate
             </div>
           </div>
         </section>
+
+        {/* What needs attention right now (only when looking at the current period) */}
+        {plan && isCurrentPeriod(mode, anchor) && (
+          <div className="home-plan">
+            <AlertsPanel alerts={plan.alerts} limit={3} compact />
+            <UpcomingRow recurring={plan.recurring} />
+          </div>
+        )}
 
         {periodExpenses.length > 0 && (
           <div className="rows">
