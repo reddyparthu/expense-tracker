@@ -19,7 +19,10 @@ export default function ExpenseList({ expenses, onDelete, period, onPeriodChange
     if (search) {
       const q = search.toLowerCase();
       result = result.filter(
-        (e) => e.item.toLowerCase().includes(q) || e.category.toLowerCase().includes(q)
+        (e) =>
+          e.item.toLowerCase().includes(q) ||
+          e.category.toLowerCase().includes(q) ||
+          (e.items || []).some((it) => String(it.name).toLowerCase().includes(q))
       );
     }
     if (filterCat !== "All") {

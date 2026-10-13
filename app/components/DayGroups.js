@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { CatIcon } from "./Icon";
 import { expenseKey, keyToDate, localDateKey, addDays, sum, euro } from "@/lib/period";
 
@@ -38,7 +38,9 @@ export default function DayGroups({ expenses, onDelete, limitDays, groups: preGr
   let groups = preGrouped || groupByDay(expenses);
   if (limitDays) groups = groups.slice(0, limitDays);
 
+  const [openReceipts, setOpenReceipts] = useState({});
   const toggle = (key) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
+  const toggleReceipt = (id) => setOpenReceipts((o) => ({ ...o, [id]: !o[id] }));
 
   return (
     <div className="day-groups">
@@ -65,23 +67,63 @@ export default function DayGroups({ expenses, onDelete, limitDays, groups: preGr
 
             {!isCollapsed && (
               <div className="day-items">
-                {items.map((exp) => (
-                  <div key={exp._id} className="day-item">
-                    <span className="day-item-icon">
-                      <CatIcon name={exp.category} />
-                    </span>
-                    <div className="day-item-info">
-                      <span className="day-item-name">{exp.item}</span>
-                      <span className="day-item-cat">{exp.category}</span>
-                    </div>
-                    <span className="day-item-amount">{euro(exp.amount)}</span>
-                    {onDelete && (
-                      <button className="delete-btn" onClick={() => onDelete(exp._id)} title="Delete">
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                ))}
+                {items.map((exp) => {
+                  const lines = exp.items || [];
+                  const open = openReceipts[exp._id];
+                  return (
+                    <Fragment key={exp._id}>
+                      <div className="day-item">
+                        <span className="day-item-icon">
+                          <CatIcon name={exp.category} />
+                        </span>
+                        {lines.length ? (
+                          <button
+                            className="day-item-info as-button"
+                            onClick={() => toggleReceipt(exp._id)}
+                            aria-expanded={Boolean(open)}
+                          >
+                            <span className="day-item-name">{exp.item}</span>
+                            <span className="day-item-cat">
+                              {exp.category} · {lines.length} {lines.length === 1 ? "item" : "items"}
+                              <span className={`day-item-caret ${open ? "open" : ""}`}>▾</span>
+                            </span>
+                          </button>
+                        ) : (
+                          <div className="day-item-info">
+                            <span className="day-item-name">{exp.item}</span>
+                            <span className="day-item-cat">{exp.category}</span>
+                          </div>
+                        )}
+                        <span className="day-item-amount">{euro(exp.amount)}</span>
+                        {onDelete && (
+                          <button className="delete-btn" onClick={() => onDelete(exp._id)} title="Delete">
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                      {open && (
+                        <div className="day-subitems">
+                          {lines.map((it, i) => (
+                            <div key={i} className="day-subitem">
+                              <span className="day-subitem-name">
+                                {it.qty > 1 && !it.isWeight ? `${it.qty}× ` : ""}
+                                {it.name}
+                                {it.isWeight ? ` · ${it.qty} kg` : ""}
+                              </span>
+                              <span className="day-subitem-amount">{euro(Number(it.amount))}</span>
+                            </div>
+                          ))}
+                          {exp.adjustment ? (
+                            <div className="day-subitem muted">
+                              <span className="day-subitem-name">Balance to receipt total</span>
+                              <span className="day-subitem-amount">{euro(exp.adjustment)}</span>
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </div>
             )}
           </section>

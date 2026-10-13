@@ -103,7 +103,7 @@ export default function Home() {
             />
           )}
           {activeTab === "add" && <ExpenseForm onExpenseAdded={() => fetchExpenses()} />}
-          {activeTab === "scan" && <BillScanner onExpenseAdded={() => fetchExpenses()} />}
+          {activeTab === "scan" && <BillScanner expenses={expenses} onExpenseAdded={() => fetchExpenses()} />}
           {activeTab === "history" && (
             <ExpenseList
               expenses={expenses}

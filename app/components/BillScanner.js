@@ -1,442 +1,321 @@
 "use client";
-import { localDateKey } from "@/lib/period";
-import { useState, useRef } from "react";
-import Icon from "./Icon";
-import { processReceiptText } from "@/lib/ocrUtils";
-import { compressImage } from "@/lib/compressImage";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Icon, { CatIcon } from "./Icon";
+import { CATEGORIES } from "@/lib/categories";
+import { localDateKey, euro } from "@/lib/period";
+import { prepareImage } from "@/lib/compressImage";
+import { recognizeImage, warmupOcr } from "@/lib/onDeviceOcr";
+import { parseReceipt } from "@/lib/receiptParser";
+import { createCategorizer, normalizeKey } from "@/lib/categoryModel";
+import { splitReceipt } from "@/lib/receiptSplit";
 
-const categories = [
-  "Food & Groceries",
-  "Rent & Housing",
-  "Transport",
-  "Utilities",
-  "Entertainment",
-  "Health",
-  "Shopping",
-  "Other",
-];
+const CATEGORY_NAMES = CATEGORIES.map((c) => c.name);
+const round2 = (n) => Math.round(n * 100) / 100;
+let nextId = 1;
 
-// Parse pasted text from ChatGPT or similar
-function parsePastedList(text) {
-  const lines = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 1);
-  const items = [];
+const SOURCE_LABEL = {
+  memory: "Remembered",
+  history: "Learned",
+  keywords: "Guessed",
+  dictionary: "Guessed",
+  store: "From store",
+  none: "",
+};
 
-  for (const line of lines) {
-    let cleaned = line.replace(/^[\d]+[.):\-]\s*/, "");
-    cleaned = cleaned.replace(/^[-•*·→►]\s*/, "").trim();
-    if (!cleaned) continue;
-
-    const skipWords = [
-      "total", "subtotal", "grand total", "tax", "vat",
-      "item", "description", "price", "amount", "quantity",
-      "here is", "here are", "list of", "expenses:",
-      "---", "===",
-    ];
-    if (skipWords.some((w) => cleaned.toLowerCase().includes(w) && cleaned.length < 40)) continue;
-
-    const pricePatterns = [
-      /[€$£]\s*(\d{1,5}[.,]\d{1,2})/,
-      /(\d{1,5}[.,]\d{1,2})\s*[€$£]?\s*(?:EUR|USD|GBP|eur)?/i,
-      /\((?:[€$£])?\s*(\d{1,5}[.,]\d{1,2})\s*(?:[€$£])?\)/,
-    ];
-
-    let price = null;
-    let matchStr = "";
-
-    for (const pattern of pricePatterns) {
-      const m = cleaned.match(pattern);
-      if (m) {
-        const p = parseFloat(m[1].replace(",", "."));
-        if (p > 0 && p < 99999) {
-          price = p;
-          matchStr = m[0];
-          break;
-        }
-      }
-    }
-
-    if (price === null) continue;
-
-    let itemName = cleaned.replace(matchStr, "");
-    itemName = itemName.replace(/[-–—:|>→►\.]{2,}\s*$/, "");
-    itemName = itemName.replace(/^\s*[-–—:|>→►\.]{2,}/, "");
-    itemName = itemName.replace(/[-–—:|>→►]\s*$/, "");
-    itemName = itemName.replace(/^\s*[-–—:|>→►]/, "");
-    itemName = itemName.replace(/\(\s*\)/, "");
-    itemName = itemName.replace(/\s{2,}/g, " ").trim();
-
-    if (itemName.length < 1) continue;
-
-    const displayName = itemName
-      .split(" ")
-      .map((w) => {
-        if (w.length <= 2) return w.toUpperCase();
-        return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
-      })
-      .join(" ");
-
-    items.push({
-      item: displayName,
-      amount: Math.round(price * 100) / 100,
-      rawName: itemName,
-    });
-  }
-  return items;
-}
-
-function categorizePastedItems(items) {
-  const keywordMap = {
-    "Food & Groceries": [
-      "milk", "bread", "rice", "egg", "chicken", "meat", "fish", "butter",
-      "cheese", "yogurt", "apple", "banana", "orange", "tomato", "potato",
-      "onion", "garlic", "carrot", "pasta", "noodle", "cereal", "flour",
-      "sugar", "salt", "oil", "coffee", "tea", "juice", "water", "soda",
-      "beer", "wine", "chips", "cookie", "chocolate", "frozen", "soup",
-      "sauce", "sausage", "bacon", "ham", "shrimp", "tofu", "mushroom",
-      "avocado", "lemon", "grape", "mango", "corn", "peas", "beans",
-      "nuts", "almond", "cream", "honey", "jam", "ketchup", "mustard",
-      "fruit", "vegetable", "snack", "drink", "grocery", "food", "pizza",
-      "sandwich", "salad", "dairy", "bakery", "salmon", "beef", "pork",
-    ],
-    "Shopping": [
-      "soap", "shampoo", "toothpaste", "deodorant", "detergent",
-      "tissue", "toilet paper", "battery", "cloth", "shirt", "shoe",
-      "bag", "cosmetic", "beauty", "cleaner",
-    ],
-    "Transport": [
-      "petrol", "gasoline", "diesel", "fuel", "bus", "train", "metro",
-      "taxi", "uber", "parking", "toll", "fare",
-    ],
-    "Utilities": [
-      "electricity", "water bill", "internet", "wifi", "phone bill",
-      "mobile", "recharge", "broadband",
-    ],
-    "Entertainment": [
-      "netflix", "spotify", "cinema", "movie", "concert", "game",
-      "playstation", "xbox", "disney", "youtube", "subscription",
-    ],
-    "Health": [
-      "medicine", "pharmacy", "doctor", "dentist", "hospital",
-      "vitamin", "gym", "health", "clinic",
-    ],
-    "Rent & Housing": [
-      "rent", "mortgage", "repair", "maintenance", "furniture",
-    ],
-  };
-
-  return items.map((item) => {
-    const lower = (item.item + " " + item.rawName).toLowerCase();
-    let category = "Other";
-    for (const [cat, keywords] of Object.entries(keywordMap)) {
-      if (keywords.some((kw) => lower.includes(kw))) {
-        category = cat;
-        break;
-      }
-    }
-    return { ...item, category, confidence: category !== "Other" ? 80 : 0 };
-  });
-}
-
-export default function BillScanner({ onExpenseAdded }) {
-  const [mode, setMode] = useState("choose");
-  const [step, setStep] = useState("upload");
-  const [imagePreview, setImagePreview] = useState(null);
-  const [imageFile, setImageFile] = useState(null);
-  const [progress, setProgress] = useState(0);
-  const [progressText, setProgressText] = useState("");
-  const [items, setItems] = useState([]);
-  const [rawText, setRawText] = useState("");
-  const [pasteText, setPasteText] = useState("");
-  const [saving, setSaving] = useState(false);
+export default function BillScanner({ expenses = [], onExpenseAdded }) {
+  const [step, setStep] = useState("choose"); // choose | reading | paste | review | done
+  const [preview, setPreview] = useState(null);
+  const [status, setStatus] = useState("");
   const [message, setMessage] = useState("");
-  const [compressionInfo, setCompressionInfo] = useState("");
+  const [pasteText, setPasteText] = useState("");
+  const [receipt, setReceipt] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(null);
+  const [corrections, setCorrections] = useState([]);
   const fileRef = useRef(null);
   const cameraRef = useRef(null);
 
-  const handleImageSelect = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  // Start downloading the reader as soon as the tab opens, and load remembered fixes
+  useEffect(() => {
+    warmupOcr();
+    fetch("/api/corrections")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => Array.isArray(rows) && setCorrections(rows))
+      .catch(() => {});
+  }, []);
 
-    setMode("scan");
-    setStep("compressing");
-    setProgressText("Preparing image...");
+  const categorizer = useMemo(() => createCategorizer({ expenses, corrections }), [expenses, corrections]);
 
-    try {
-      const originalSize = (file.size / 1024 / 1024).toFixed(1);
-
-      // Compress if needed
-      const compressed = await compressImage(file);
-      const newSize = (compressed.size / 1024 / 1024).toFixed(1);
-
-      if (file.size !== compressed.size) {
-        setCompressionInfo(`Compressed: ${originalSize}MB → ${newSize}MB`);
-      } else {
-        setCompressionInfo(`Size: ${originalSize}MB`);
-      }
-
-      setImageFile(compressed);
-
-      // Create preview from original for display
-      const url = URL.createObjectURL(file);
-      setImagePreview(url);
-      setStep("ready");
-    } catch (err) {
-      setImageFile(file);
-      const url = URL.createObjectURL(file);
-      setImagePreview(url);
-      setStep("ready");
-    }
-  };
-
-  const handleScan = async () => {
-    if (!imageFile) return;
-    setStep("scanning");
-    setProgress(10);
-    setProgressText("Uploading to OCR engine...");
-
-    try {
-      const formData = new FormData();
-      formData.append("image", imageFile);
-
-      setProgress(30);
-      setProgressText("Reading text from bill...");
-
-      const res = await fetch("/api/scan", {
-        method: "POST",
-        body: formData,
-      });
-
-      setProgress(70);
-      setProgressText("Processing results...");
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "OCR failed");
-      }
-
-      const fullText = data.text;
-      setRawText(fullText);
-
-      setProgress(90);
-      setProgressText("Extracting items...");
-
-      const extracted = processReceiptText(fullText);
-      finishExtraction(extracted);
-    } catch (err) {
-      console.error("Scan error:", err);
-      setMessage("Failed to scan: " + err.message + ". Try a clearer photo or paste the list.");
-      setStep("ready");
-    }
-  };
-
-  const handlePasteSubmit = () => {
-    if (!pasteText.trim()) {
-      setMessage("Paste your expense list first.");
-      return;
-    }
-    setMessage("");
-    const rawItems = parsePastedList(pasteText);
-    const categorized = categorizePastedItems(rawItems);
-    setRawText(pasteText);
-    finishExtraction(categorized);
-  };
-
-  const finishExtraction = (extracted) => {
-    if (extracted.length === 0) {
-      setItems([]);
-      setStep("review");
-      return;
-    }
-    const today = localDateKey();
-    const withMeta = extracted.map((item, i) => ({
-      ...item,
-      id: Date.now() + i,
-      date: today,
-      selected: true,
-    }));
-    setItems(withMeta);
+  // ---------- reading ----------
+  const buildReceipt = (lines, source) => {
+    const parsed = parseReceipt(lines, { guessStore: source !== "paste" });
+    const merchantCategory = parsed.merchant.category;
+    const items = parsed.items.map((it) => {
+      const c = categorizer.categorize(it.raw || it.name, { merchantCategory });
+      const name = c.name || it.name;
+      return {
+        ...it,
+        id: nextId++,
+        name,
+        category: c.category,
+        confidence: c.confidence,
+        source: c.source,
+        suggestedName: name,
+        suggestedCategory: c.category,
+        selected: true,
+      };
+    });
+    const storeCategory =
+      categorizer.categorizeStore(parsed.merchant.name, merchantCategory) ||
+      mostCommon(items.map((i) => i.category)) ||
+      "Other";
+    setReceipt({
+      merchant: parsed.merchant.name || "",
+      date: parsed.date || localDateKey(),
+      dateFound: Boolean(parsed.date),
+      total: parsed.total ? String(parsed.total.toFixed(2)) : "",
+      totalSource: parsed.totalSource,
+      mode: items.length ? "split" : "single",
+      category: storeCategory,
+      items,
+      lines: parsed.lines,
+      source,
+    });
     setStep("review");
   };
 
-  const updateItem = (id, field, value) => {
-    setItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
-    );
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setMessage("");
+    setPreview(URL.createObjectURL(file));
+    setStep("reading");
+    setStatus("Preparing photo…");
+
+    let image;
+    try {
+      image = await prepareImage(file);
+    } catch (err) {
+      setMessage(err.message);
+      setStep("choose");
+      return;
+    }
+
+    try {
+      setStatus("Reading receipt on your device…");
+      const { lines } = await recognizeImage(image);
+      if (!lines.length) throw new Error("No text found");
+      buildReceipt(lines, "device");
+    } catch (deviceErr) {
+      // Fall back to the online reader (OCR.space free tier)
+      try {
+        setStatus("Trying the online reader…");
+        const form = new FormData();
+        form.append("image", image);
+        const res = await fetch("/api/scan", { method: "POST", body: form });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Online reader failed");
+        buildReceipt(data.text.split("\n"), "online");
+      } catch (err) {
+        console.error(deviceErr, err);
+        setMessage("Couldn't read this photo. Try a sharper, well-lit picture, or paste the items instead.");
+        setStep("choose");
+      }
+    }
   };
 
-  const toggleItem = (id) => {
-    setItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, selected: !item.selected } : item))
-    );
+  const handlePaste = () => {
+    if (!pasteText.trim()) {
+      setMessage("Paste your list first.");
+      return;
+    }
+    setMessage("");
+    buildReceipt(pasteText.split("\n"), "paste");
   };
 
-  const removeItem = (id) => {
-    setItems((prev) => prev.filter((item) => item.id !== id));
-  };
+  // ---------- editing ----------
+  const setField = (field, value) => setReceipt((r) => ({ ...r, [field]: value }));
+  const updateItem = (id, patch) =>
+    setReceipt((r) => ({ ...r, items: r.items.map((it) => (it.id === id ? { ...it, ...patch } : it)) }));
+  const removeItem = (id) => setReceipt((r) => ({ ...r, items: r.items.filter((it) => it.id !== id) }));
+  const addItem = () =>
+    setReceipt((r) => ({
+      ...r,
+      mode: "split",
+      items: [
+        ...r.items,
+        { id: nextId++, name: "", amount: 0, category: r.category || "Other", selected: true, source: "none" },
+      ],
+    }));
 
-  const addManualItem = () => {
-    setItems((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        item: "",
-        amount: 0,
-        category: "Other",
-        date: localDateKey(),
-        confidence: 100,
-        selected: true,
-        rawName: "",
-      },
-    ]);
-  };
+  const selectedItems = receipt ? receipt.items.filter((it) => it.selected && Number(it.amount) > 0) : [];
+  const itemsTotal = round2(selectedItems.reduce((s, it) => s + Number(it.amount), 0));
+  const total = receipt ? round2(parseFloat(String(receipt.total).replace(",", ".")) || itemsTotal) : 0;
+  const difference = round2(total - itemsTotal);
+  const groups = receipt
+    ? splitReceipt({ total, items: selectedItems, mode: receipt.mode, category: receipt.category })
+    : [];
 
-  const saveAll = async () => {
-    const selected = items.filter((item) => item.selected && item.item && item.amount > 0);
-    if (selected.length === 0) {
-      setMessage("No items to save.");
+  // ---------- saving ----------
+  const save = async () => {
+    if (!(total > 0)) {
+      setMessage("Enter the receipt total first.");
       return;
     }
     setSaving(true);
     setMessage("");
     try {
-      for (const item of selected) {
-        await fetch("/api/expenses", {
+      const res = await fetch("/api/receipts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          merchant: receipt.merchant,
+          date: receipt.date,
+          total,
+          mode: receipt.mode,
+          category: receipt.category,
+          source: receipt.source,
+          lines: receipt.lines,
+          items: selectedItems.map(({ name, amount, category, qty, unit, isWeight, discount, raw }) => ({
+            name,
+            amount: Number(amount),
+            category,
+            qty,
+            unit,
+            isWeight,
+            discount,
+            raw,
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Save failed");
+
+      // Remember what the user changed, so the next scan gets it right
+      const fixes = receipt.items
+        .filter((it) => it.selected && it.raw)
+        .filter((it) => it.name !== it.suggestedName || it.category !== it.suggestedCategory)
+        .map((it) => ({ raw: it.raw, name: it.name, category: it.category }));
+      if (fixes.length) {
+        fetch("/api/corrections", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            item: item.item,
-            amount: item.amount,
-            category: item.category,
-            date: item.date,
-          }),
-        });
+          body: JSON.stringify({ corrections: fixes }),
+        }).catch(() => {});
+        setCorrections((prev) => [
+          ...fixes.map((f) => ({ ...f, key: normalizeKey(f.raw) })),
+          ...prev,
+        ]);
       }
-      setMessage(`${selected.length} expenses saved!`);
+
+      setSaved({ merchant: receipt.merchant, total, count: data.expenses.length, learned: fixes.length });
       setStep("done");
-      if (onExpenseAdded) onExpenseAdded();
+      onExpenseAdded?.();
     } catch (err) {
-      setMessage("Failed to save.");
+      setMessage(`Couldn't save: ${err.message}`);
     } finally {
       setSaving(false);
     }
   };
 
   const reset = () => {
-    setMode("choose");
-    setStep("upload");
-    setImagePreview(null);
-    setImageFile(null);
-    setItems([]);
-    setRawText("");
+    if (preview) URL.revokeObjectURL(preview);
+    setPreview(null);
+    setReceipt(null);
     setPasteText("");
     setMessage("");
-    setProgress(0);
-    setProgressText("");
-    setCompressionInfo("");
+    setSaved(null);
+    setStep("choose");
   };
 
-  const selectedTotal = items
-    .filter((i) => i.selected)
-    .reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0);
-
+  // ---------- render ----------
   return (
     <div className="panel scanner-card">
+      {message && <div className="form-message error">{message}</div>}
 
-      {message && (
-        <div className={`form-message ${message.includes("saved") ? "success" : "error"}`}>
-          {message}
-        </div>
-      )}
-
-      {/* MODE CHOOSER */}
-      {mode === "choose" && step === "upload" && (
+      {step === "choose" && (
         <div className="upload-area">
           <div className="upload-options three-col">
-            <div className="dropzone" onClick={() => fileRef.current?.click()}>
-              <div className="dropzone-icon">
-                <Icon name="image" size={30} strokeWidth={1.6} />
-              </div>
-              <p className="dropzone-title">Gallery</p>
-              <p className="dropzone-subtitle">Pick a photo of your bill</p>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageSelect}
-                style={{ display: "none" }}
-              />
-            </div>
-            <div className="dropzone" onClick={() => cameraRef.current?.click()}>
+            <button className="dropzone" onClick={() => cameraRef.current?.click()}>
               <div className="dropzone-icon">
                 <Icon name="camera" size={30} strokeWidth={1.6} />
               </div>
               <p className="dropzone-title">Camera</p>
-              <p className="dropzone-subtitle">Snap the bill</p>
-              <input
-                ref={cameraRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handleImageSelect}
-                style={{ display: "none" }}
-              />
-            </div>
-            <div className="dropzone" onClick={() => { setMode("paste"); setStep("paste"); }}>
+              <p className="dropzone-subtitle">Snap the receipt</p>
+            </button>
+            <button className="dropzone" onClick={() => fileRef.current?.click()}>
+              <div className="dropzone-icon">
+                <Icon name="image" size={30} strokeWidth={1.6} />
+              </div>
+              <p className="dropzone-title">Gallery</p>
+              <p className="dropzone-subtitle">Pick a photo</p>
+            </button>
+            <button className="dropzone" onClick={() => setStep("paste")}>
               <div className="dropzone-icon">
                 <Icon name="clipboard" size={30} strokeWidth={1.6} />
               </div>
-              <p className="dropzone-title">Paste List</p>
-              <p className="dropzone-subtitle">Paste from ChatGPT etc.</p>
-            </div>
+              <p className="dropzone-title">Paste list</p>
+              <p className="dropzone-subtitle">Type or paste items</p>
+            </button>
           </div>
+          <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={handleFile} hidden />
+          <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} hidden />
+
           <div className="scan-tips">
-            <p className="tips-title">Tips:</p>
+            <p className="tips-title">How it works</p>
             <ul className="tips-list">
-              <li>Use good lighting for photos — avoid shadows</li>
-              <li>Printed receipts work better than handwritten</li>
-              <li>Large images are auto-compressed for you</li>
-              <li>For paste: any format works — &quot;Milk - €2.50&quot; or &quot;Milk 2.50&quot;</li>
+              <li>The receipt is read on your device — the photo never leaves your phone</li>
+              <li>Store, date and total are found automatically; items are split by category</li>
+              <li>Fix anything once and it&apos;s remembered for next time</li>
+              <li>Flat, well-lit photos with the whole receipt in view work best</li>
             </ul>
+            {categorizer.trainedOn > 0 && (
+              <p className="tips-foot">
+                Categories learned from {categorizer.trainedOn} of your expenses
+                {corrections.length ? ` · ${corrections.length} remembered fixes` : ""}
+              </p>
+            )}
           </div>
         </div>
       )}
 
-      {/* COMPRESSING */}
-      {step === "compressing" && (
-        <div className="scanning-area">
-          <div className="scan-animation">
-            <div className="scan-icon">
-              <span className="spinner-ring" />
+      {step === "reading" && (
+        <div className="reading-area">
+          {preview && (
+            <div className="reading-thumb">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={preview} alt="Receipt" />
+              <span className="reading-scanline" />
             </div>
-            <p className="scan-status">{progressText}</p>
+          )}
+          <p className="scan-status">{status}</p>
+          <div className="progress-bar-container indeterminate">
+            <div className="progress-bar" />
           </div>
+          <p className="progress-text">The first scan downloads the reader once (about 10–15 MB). After that it&apos;s quick and works offline.</p>
         </div>
       )}
 
-      {/* PASTE MODE */}
       {step === "paste" && (
         <div className="paste-area">
-          <p className="paste-instructions">
-            Paste your expense list below. Any format works:
-          </p>
+          <p className="paste-instructions">One item per line, any format works:</p>
           <div className="paste-examples">
             <code>Milk - €2.50</code>
             <code>Bread: 1.20</code>
-            <code>1. Rice €3.99</code>
-            <code>Eggs 2.50 EUR</code>
+            <code>2 x Coffee 3,80</code>
           </div>
           <textarea
             className="paste-textarea"
-            rows={10}
-            placeholder={"Paste your list here...\n\nExample:\nMilk - €2.50\nBread - €1.20\nRice 2kg - €3.99\nEggs - €2.80"}
+            rows={9}
+            placeholder={"Milk - 2.50\nBread - 1.20\nRice 2kg - 3.99"}
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
             autoFocus
           />
           <div className="paste-actions">
-            <button className="btn btn-primary" onClick={handlePasteSubmit}>
-              Detect Items
+            <button className="btn btn-primary" onClick={handlePaste}>
+              Read items
             </button>
             <button className="btn btn-ghost" onClick={reset}>
               Back
@@ -445,189 +324,200 @@ export default function BillScanner({ onExpenseAdded }) {
         </div>
       )}
 
-      {/* SCAN MODE - Image ready */}
-      {mode === "scan" && step === "ready" && (
-        <div className="upload-area">
-          <div className="image-preview-container">
-            <img src={imagePreview} alt="Bill preview" className="image-preview" />
-            {compressionInfo && (
-              <p className="compression-info">{compressionInfo}</p>
-            )}
-            <div className="preview-actions">
-              <button className="btn btn-primary" onClick={handleScan}>
-                Scan This Bill
-              </button>
-              <button className="btn btn-ghost" onClick={reset}>
-                Back
-              </button>
-            </div>
+      {step === "review" && receipt && (
+        <div className="rx">
+          {/* Receipt summary */}
+          <div className="rx-head">
+            <label className="rx-field rx-store">
+              <span>Store</span>
+              <input
+                value={receipt.merchant}
+                placeholder="Store name"
+                onChange={(e) => setField("merchant", e.target.value)}
+              />
+            </label>
+            <label className="rx-field">
+              <span>Date {!receipt.dateFound && receipt.source !== "paste" && <em>not found · today</em>}</span>
+              <input type="date" value={receipt.date} onChange={(e) => setField("date", e.target.value)} />
+            </label>
+            <label className="rx-field">
+              <span>Total {receipt.totalSource === "items" && <em>from items</em>}</span>
+              <input
+                inputMode="decimal"
+                value={receipt.total}
+                placeholder={itemsTotal.toFixed(2)}
+                onChange={(e) => setField("total", e.target.value)}
+              />
+            </label>
           </div>
-        </div>
-      )}
 
-      {/* SCANNING */}
-      {step === "scanning" && (
-        <div className="scanning-area">
-          <div className="scan-animation">
-            <div className="scan-icon">
-              <Icon name="search" size={40} strokeWidth={1.6} />
-            </div>
-            <p className="scan-status">{progressText}</p>
-          </div>
-          <div className="progress-bar-container">
-            <div className="progress-bar" style={{ width: `${progress}%` }}></div>
-          </div>
-          <p className="progress-text">{progress}% complete</p>
-        </div>
-      )}
-
-      {/* REVIEW */}
-      {step === "review" && (
-        <div className="review-area">
-          {items.length === 0 ? (
-            <div className="no-items-found">
-              <p className="no-items-title">No items detected</p>
-              <p className="no-items-subtitle">
-                {mode === "paste"
-                  ? "Could not find items with prices. Make sure each line has a name and a number."
-                  : "The image might be blurry. Try a clearer photo or paste a list instead."}
-              </p>
-              {rawText && (
-                <details className="raw-text-section" style={{ marginBottom: "16px" }}>
-                  <summary>View detected text</summary>
-                  <pre className="raw-text-content">{rawText}</pre>
-                </details>
+          {receipt.items.length > 0 && (
+            <div className={`rx-check ${Math.abs(difference) < 0.01 ? "ok" : "warn"}`}>
+              <Icon name={Math.abs(difference) < 0.01 ? "check" : "search"} size={16} strokeWidth={2.2} />
+              {Math.abs(difference) < 0.01 ? (
+                <span>Items add up to the receipt total</span>
+              ) : (
+                <span>
+                  Items add up to {euro(itemsTotal)} — {euro(Math.abs(difference))}{" "}
+                  {difference > 0 ? "missing" : "too much"}.{" "}
+                  {receipt.mode === "split" && groups[0] && <>It&apos;ll be balanced on {groups[0].category}.</>}
+                </span>
               )}
-              <div className="no-items-actions">
-                <button className="btn btn-primary" onClick={addManualItem}>
-                  Add Manually
-                </button>
-                <button className="btn btn-ghost" onClick={reset}>
-                  Start Over
-                </button>
-              </div>
             </div>
-          ) : (
-            <>
-              <div className="review-header">
-                <div className="review-info">
-                  <span className="review-count">{items.length} items found</span>
-                  <span className="review-total">
-                    Selected total: €{selectedTotal.toFixed(2)}
-                  </span>
-                </div>
-                <button className="btn btn-small btn-ghost" onClick={addManualItem}>
-                  + Add Item
-                </button>
-              </div>
-
-              <div className="review-list">
-                {items.map((item) => (
-                  <div
-                    key={item.id}
-                    className={`review-item ${!item.selected ? "deselected" : ""}`}
-                  >
-                    <div className="review-item-check">
-                      <input
-                        type="checkbox"
-                        checked={item.selected}
-                        onChange={() => toggleItem(item.id)}
-                      />
-                    </div>
-                    <div className="review-item-fields">
-                      <div className="review-row">
-                        <input
-                          type="text"
-                          className="review-input name-input"
-                          value={item.item}
-                          onChange={(e) => updateItem(item.id, "item", e.target.value)}
-                          placeholder="Item name"
-                        />
-                        <input
-                          type="number"
-                          className="review-input price-input"
-                          value={item.amount}
-                          step="0.01"
-                          min="0"
-                          onChange={(e) =>
-                            updateItem(item.id, "amount", parseFloat(e.target.value) || 0)
-                          }
-                        />
-                      </div>
-                      <div className="review-row-bottom">
-                        <select
-                          className="review-select"
-                          value={item.category}
-                          onChange={(e) => updateItem(item.id, "category", e.target.value)}
-                        >
-                          {categories.map((cat) => (
-                            <option key={cat} value={cat}>{cat}</option>
-                          ))}
-                        </select>
-                        <input
-                          type="date"
-                          className="review-input date-input"
-                          value={item.date}
-                          onChange={(e) => updateItem(item.id, "date", e.target.value)}
-                        />
-                        {item.confidence > 0 && (
-                          <span
-                            className={`confidence-badge ${
-                              item.confidence >= 70 ? "high" : item.confidence >= 40 ? "mid" : "low"
-                            }`}
-                          >
-                            {item.confidence}% match
-                          </span>
-                        )}
-                        <button
-                          className="remove-item-btn"
-                          onClick={() => removeItem(item.id)}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                      {item.rawName && item.rawName !== item.item && (
-                        <span className="raw-text-hint">
-                          Original: &quot;{item.rawName}&quot;
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="review-actions">
-                <button className="btn btn-primary" onClick={saveAll} disabled={saving}>
-                  {saving ? "Saving..." : `Save ${items.filter((i) => i.selected).length} Items`}
-                </button>
-                <button className="btn btn-ghost" onClick={reset}>
-                  Start Over
-                </button>
-              </div>
-            </>
           )}
 
-          {rawText && items.length > 0 && (
+          {/* How it will be saved */}
+          <div className="rx-save-as">
+            <div className="seg" role="tablist">
+              <button
+                className={receipt.mode === "split" ? "active" : ""}
+                onClick={() => setField("mode", "split")}
+                disabled={!receipt.items.length}
+              >
+                Split by category
+              </button>
+              <button className={receipt.mode === "single" ? "active" : ""} onClick={() => setField("mode", "single")}>
+                One expense
+              </button>
+            </div>
+            {receipt.mode === "single" && (
+              <select
+                className="filter-select"
+                value={receipt.category}
+                onChange={(e) => setField("category", e.target.value)}
+              >
+                {CATEGORY_NAMES.map((c) => (
+                  <option key={c}>{c}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div className="rx-groups">
+            {groups.map((g) => (
+              <span key={g.category} className="rx-group">
+                <CatIcon name={g.category} size={15} />
+                {g.category}
+                <strong>{euro(g.amount)}</strong>
+              </span>
+            ))}
+          </div>
+
+          {/* Items */}
+          <div className="rx-items-head">
+            <span>{receipt.items.length ? `${receipt.items.length} items` : "No items found — saved as one expense"}</span>
+            <button className="btn btn-ghost btn-small" onClick={addItem}>
+              + Add item
+            </button>
+          </div>
+
+          <div className="rx-items">
+            {receipt.items.map((it) => (
+              <div key={it.id} className={`rx-item ${it.selected ? "" : "off"}`}>
+                <input
+                  type="checkbox"
+                  className="rx-check-box"
+                  checked={it.selected}
+                  onChange={() => updateItem(it.id, { selected: !it.selected })}
+                  aria-label="Include item"
+                />
+                <div className="rx-item-main">
+                  <div className="rx-item-row">
+                    <input
+                      className="rx-name"
+                      value={it.name}
+                      placeholder="Item name"
+                      onChange={(e) => updateItem(it.id, { name: e.target.value })}
+                    />
+                    <input
+                      className="rx-amount"
+                      inputMode="decimal"
+                      value={it.amount}
+                      onChange={(e) => updateItem(it.id, { amount: e.target.value.replace(",", ".") })}
+                    />
+                  </div>
+                  <div className="rx-item-row small">
+                    {receipt.mode === "split" && (
+                      <select
+                        className="rx-cat"
+                        value={it.category}
+                        onChange={(e) => updateItem(it.id, { category: e.target.value })}
+                      >
+                        {CATEGORY_NAMES.map((c) => (
+                          <option key={c}>{c}</option>
+                        ))}
+                      </select>
+                    )}
+                    {it.qty ? (
+                      <span className="rx-meta">
+                        {it.isWeight ? `${it.qty} kg` : `${it.qty}×`} {it.unit ? `@ ${euro(Number(it.unit))}` : ""}
+                      </span>
+                    ) : null}
+                    {it.discount ? <span className="rx-meta">−{euro(it.discount)} off</span> : null}
+                    {it.source && SOURCE_LABEL[it.source] && it.category === it.suggestedCategory && (
+                      <span className={`rx-badge ${it.source}`}>{SOURCE_LABEL[it.source]}</span>
+                    )}
+                  </div>
+                  {it.raw && it.raw.toLowerCase() !== String(it.name).toLowerCase() && (
+                    <span className="raw-text-hint">Receipt: {it.raw}</span>
+                  )}
+                </div>
+                <button className="remove-item-btn" onClick={() => removeItem(it.id)} aria-label="Remove item">
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="review-actions">
+            <button className="btn btn-primary" onClick={save} disabled={saving}>
+              {saving
+                ? "Saving…"
+                : `Save ${groups.length > 1 ? `${groups.length} expenses` : "expense"} · ${euro(total)}`}
+            </button>
+            <button className="btn btn-ghost" onClick={reset}>
+              Start over
+            </button>
+          </div>
+
+          {receipt.lines?.length > 0 && receipt.source !== "paste" && (
             <details className="raw-text-section">
-              <summary>View raw OCR text</summary>
-              <pre className="raw-text-content">{rawText}</pre>
+              <summary>
+                Text read from the receipt ({receipt.source === "device" ? "on device" : "online reader"})
+              </summary>
+              <pre className="raw-text-content">{receipt.lines.join("\n")}</pre>
             </details>
           )}
         </div>
       )}
 
-      {/* DONE */}
-      {step === "done" && (
+      {step === "done" && saved && (
         <div className="done-area">
           <div className="done-icon">
             <Icon name="check" size={30} strokeWidth={2.4} />
           </div>
-          <p className="done-title">All expenses saved!</p>
+          <p className="done-title">
+            Saved {saved.merchant || "receipt"} · {euro(saved.total)}
+          </p>
+          <p className="done-sub">
+            {saved.count > 1 ? `Split into ${saved.count} expenses by category.` : "Saved as one expense."}
+            {saved.learned ? ` Remembered ${saved.learned} fix${saved.learned > 1 ? "es" : ""} for next time.` : ""}
+          </p>
           <button className="btn btn-primary" onClick={reset}>
-            Add More
+            Scan another
           </button>
         </div>
       )}
     </div>
   );
+}
+
+function mostCommon(list) {
+  const counts = {};
+  let best = null;
+  for (const x of list) {
+    counts[x] = (counts[x] || 0) + 1;
+    if (!best || counts[x] > counts[best]) best = x;
+  }
+  return best;
 }
