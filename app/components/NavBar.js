@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { signOut } from "next-auth/react";
 import ThemeToggle from "./ThemeToggle";
+import LineIcon from "./Icon";
 
 const LINKS = [
   { id: "dashboard", label: "Home" },
@@ -98,7 +99,7 @@ function ProfileMenu({ user }) {
   );
 }
 
-export default function NavBar({ active, onChange, user }) {
+export default function NavBar({ active, onChange, user, onSearch }) {
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
@@ -129,6 +130,9 @@ export default function NavBar({ active, onChange, user }) {
           </nav>
 
           <div className="topnav-right">
+            <button className="nav-icon-btn" onClick={onSearch} aria-label="Search expenses" title="Search ( / )">
+              <LineIcon name="search" size={18} />
+            </button>
             <button className={`nav-pill ghost ${active === "scan" ? "active" : ""}`} onClick={() => onChange("scan")}>
               <span className="nav-pill-icon">{Icon.scan}</span>
               Scan

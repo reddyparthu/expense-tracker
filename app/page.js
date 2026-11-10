@@ -19,6 +19,7 @@ export default function Home() {
   // Shared by Dashboard and History so swiping to a past period sticks across tabs
   const [period, setPeriod] = useState(() => ({ mode: "month", anchor: new Date(), dir: 0 }));
   const [budgets, setBudgets] = useState({});
+  const [searchSignal, setSearchSignal] = useState(0); // bumps to focus the History search box
   // Forecasts, regular bills and alerts — recomputed whenever expenses or budgets change
   const plan = useMemo(() => buildPlan(expenses, budgets), [expenses, budgets]);
 
@@ -69,6 +70,11 @@ export default function Home() {
     setBudgets(data.budgets || {});
   };
 
+  const openSearch = () => {
+    setActiveTab("history");
+    setSearchSignal((n) => n + 1);
+  };
+
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -101,7 +107,7 @@ export default function Home() {
   return (
     <div className="app">
       <FluidBackground />
-      <NavBar active={activeTab} onChange={handleTabChange} user={session.user} />
+      <NavBar active={activeTab} onChange={handleTabChange} user={session.user} onSearch={openSearch} />
 
       <main className={`main ${activeTab === "dashboard" ? "is-home" : ""}`}>
         {pageInfo && (
@@ -130,6 +136,7 @@ export default function Home() {
               onDelete={handleDelete}
               period={period}
               onPeriodChange={setPeriod}
+              focusSignal={searchSignal}
             />
           )}
           {activeTab === "insights" && (

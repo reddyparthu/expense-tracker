@@ -2,6 +2,35 @@
 import { Fragment, useState } from "react";
 import { CatIcon } from "./Icon";
 import { expenseKey, keyToDate, localDateKey, addDays, sum, euro } from "@/lib/period";
+import { fold } from "@/lib/search";
+
+// Wraps the parts of `text` that match any search term in <mark> (case/accent-insensitive)
+function Highlight({ text, terms }) {
+  const str = String(text ?? "");
+  if (!terms?.length) return str;
+  const folded = fold(str);
+  if (folded.length !== str.length) return str; // unusual characters: skip rather than mis-highlight
+  const ranges = [];
+  for (const t of terms) {
+    let i = folded.indexOf(t);
+    while (t && i !== -1) {
+      ranges.push([i, i + t.length]);
+      i = folded.indexOf(t, i + t.length);
+    }
+  }
+  if (!ranges.length) return str;
+  ranges.sort((a, b) => a[0] - b[0]);
+  const parts = [];
+  let pos = 0;
+  for (const [start, end] of ranges) {
+    if (start < pos) continue;
+    if (start > pos) parts.push(str.slice(pos, start));
+    parts.push(<mark key={start}>{str.slice(start, end)}</mark>);
+    pos = end;
+  }
+  parts.push(str.slice(pos));
+  return parts;
+}
 
 // Group expenses by day, newest day first. Within a day, keep incoming order.
 export function groupByDay(expenses) {
@@ -33,14 +62,16 @@ export function dayHeading(key) {
 
 // Expenses shown as sub-blocks under a header for each date.
 // Days can be collapsed. `limitDays` caps how many day groups render.
-export default function DayGroups({ expenses, onDelete, limitDays, groups: preGrouped }) {
+// `highlight`: search terms to mark. `openIds`: receipts to show expanded (e.g. their items matched a search).
+export default function DayGroups({ expenses, onDelete, limitDays, groups: preGrouped, highlight = null, openIds = null }) {
   const [collapsed, setCollapsed] = useState({});
   let groups = preGrouped || groupByDay(expenses);
   if (limitDays) groups = groups.slice(0, limitDays);
 
   const [openReceipts, setOpenReceipts] = useState({});
   const toggle = (key) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
-  const toggleReceipt = (id) => setOpenReceipts((o) => ({ ...o, [id]: !o[id] }));
+  const isOpen = (id) => openReceipts[id] ?? Boolean(openIds?.has(id));
+  const toggleReceipt = (id) => setOpenReceipts((o) => ({ ...o, [id]: !(o[id] ?? Boolean(openIds?.has(id))) }));
 
   return (
     <div className="day-groups">
@@ -69,7 +100,7 @@ export default function DayGroups({ expenses, onDelete, limitDays, groups: preGr
               <div className="day-items">
                 {items.map((exp) => {
                   const lines = exp.items || [];
-                  const open = openReceipts[exp._id];
+                  const open = isOpen(exp._id);
                   return (
                     <Fragment key={exp._id}>
                       <div className="day-item">
@@ -82,7 +113,9 @@ export default function DayGroups({ expenses, onDelete, limitDays, groups: preGr
                             onClick={() => toggleReceipt(exp._id)}
                             aria-expanded={Boolean(open)}
                           >
-                            <span className="day-item-name">{exp.item}</span>
+                            <span className="day-item-name">
+                              <Highlight text={exp.item} terms={highlight} />
+                            </span>
                             <span className="day-item-cat">
                               {exp.category} · {lines.length} {lines.length === 1 ? "item" : "items"}
                               <span className={`day-item-caret ${open ? "open" : ""}`}>▾</span>
@@ -90,7 +123,9 @@ export default function DayGroups({ expenses, onDelete, limitDays, groups: preGr
                           </button>
                         ) : (
                           <div className="day-item-info">
-                            <span className="day-item-name">{exp.item}</span>
+                            <span className="day-item-name">
+                              <Highlight text={exp.item} terms={highlight} />
+                            </span>
                             <span className="day-item-cat">{exp.category}</span>
                           </div>
                         )}
@@ -107,7 +142,7 @@ export default function DayGroups({ expenses, onDelete, limitDays, groups: preGr
                             <div key={i} className="day-subitem">
                               <span className="day-subitem-name">
                                 {it.qty > 1 && !it.isWeight ? `${it.qty}× ` : ""}
-                                {it.name}
+                                <Highlight text={it.name} terms={highlight} />
                                 {it.isWeight ? ` · ${it.qty} kg` : ""}
                               </span>
                               <span className="day-subitem-amount">{euro(Number(it.amount))}</span>
